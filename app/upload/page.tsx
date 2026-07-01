@@ -219,7 +219,6 @@ export default function UploadPage() {
         class_accuracy: c.class_accuracy,
         openset_accuracy: c.openset_accuracy,
         osa_accuracy: c.osa_accuracy,
-        sos_accuracy: c.sos_accuracy,
         sticker_detector_accuracy: c.sticker_detector_accuracy,
         sticker_value_accuracy: c.sticker_value_accuracy,
       }));

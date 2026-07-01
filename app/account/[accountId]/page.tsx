@@ -11,7 +11,7 @@ import { formatDate, formatRelativeTime, getHealthStatus, healthColor, pillColor
 interface Account { id: string; name: string; display_name: string | null; }
 interface Project { id: string; name: string; display_name: string | null; account_id: string; }
 interface Snapshot { id: string; project_id: string; test_date: string; }
-interface CatMetric { snapshot_id: string; category_name: string; gpd_accuracy: number | null; group_accuracy: number | null; class_accuracy: number | null; osa_accuracy: number | null; sos_accuracy: number | null; }
+interface CatMetric { snapshot_id: string; category_name: string; gpd_accuracy: number | null; group_accuracy: number | null; class_accuracy: number | null; osa_accuracy: number | null; }
 
 export default function AccountPage() {
   const router = useRouter();
@@ -54,7 +54,7 @@ export default function AccountPage() {
 
     const snapIds = (snaps || []).map((s: any) => s.id);
     if (snapIds.length) {
-      const { data: cats } = await supabase.from("category_metrics").select("snapshot_id, category_name, gpd_accuracy, group_accuracy, class_accuracy, osa_accuracy, sos_accuracy").in("snapshot_id", snapIds);
+      const { data: cats } = await supabase.from("category_metrics").select("snapshot_id, category_name, gpd_accuracy, group_accuracy, class_accuracy, osa_accuracy").in("snapshot_id", snapIds);
       const cMap: Record<string, CatMetric[]> = {};
       (cats || []).forEach((c: any) => {
         const pid = Object.keys(snapMap).find((k) => snapMap[k].id === c.snapshot_id);
@@ -208,7 +208,6 @@ function CardMetrics({ metrics }: { metrics: any[] }) {
     ["Class", avg("class_accuracy")],
     ["GPD", avg("gpd_accuracy")],
     ["OSA", avg("osa_accuracy")],
-    ["SOS", avg("sos_accuracy")],
   ];
   const visible = entries.filter(([label, v]) => v != null || label === "Group" || label === "Class");
 

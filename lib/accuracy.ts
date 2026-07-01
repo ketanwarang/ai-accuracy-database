@@ -18,9 +18,8 @@
 // 3. Openset accuracy = simple POOLED accuracy across all SKU rows
 //    (NOT per-shop averaged, NOT gpd-gated). Matches reference exactly.
 //
-// 4. OSA/SOS accuracy = simple pooled average of the osa_accuracy/
-//    sos_accuracy columns when present (these are file-level percentage
-//    columns from a different report shape, not computed from raw rows).
+// 4. OSA (On Shelf Availability): per-shop avg of (class-shop combos with
+//    at least one correct actual_class==predicted_class) / (total combos).
 //
 // If a file has no "Shop ID" column, all formulas degrade gracefully to
 // pooled (single "shop") since there's nothing to average across.
@@ -48,7 +47,6 @@ export interface CategoryResult {
   class_accuracy: number | null;
   openset_accuracy: number | null;
   osa_accuracy: number | null;
-  sos_accuracy: number | null;
   sticker_detector_accuracy: number | null;
   sticker_value_accuracy: number | null;
 }
@@ -132,40 +130,36 @@ export function computeCategoryMetrics(allRows: Row[], categoryName: string | nu
   const osCorrect = osRows.filter((r) => col(r, "openset_actual") === col(r, "openset_prediction")).length;
   const osAcc = osRows.length ? osCorrect / osRows.length : null;
 
-  // SOS (Sticker On Shelf accuracy): per-shop average of sticker_accuracy on Sticker rows.
-  // Sticker rows where sticker_value_predicted == sticker_value_actual => sticker_accuracy = 1.
-  const sosAcc = (() => {
-    const stickerRows = rows.filter((r) => col(r, "annotation_type") === "Sticker");
-    if (!stickerRows.length) return null;
-    const shops = groupByShop(stickerRows);
-    const shopAccs = shops.map((shopRows) => {
-      const vals = shopRows
-        .map((r) => parseFloat(col(r, "sticker_accuracy")))
-        .filter((v) => !isNaN(v));
-      return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
-    }).filter((v): v is number => v !== null);
-    return shopAccs.length ? shopAccs.reduce((a, b) => a + b, 0) / shopAccs.length : null;
-  })();
+  // Eligible rows for OSA: same filter as group/class level analysis
+  const eligibleRows = skuRows.filter(
+    (r) =>
+      !["", "None", "Shelf", "Sticker"].includes(col(r, "actual_group")) &&
+      !["", "None"].includes(col(r, "actual_class"))
+  );
 
-  // OSA (On Shelf Availability): per-shop % of self/comp_actual='self' SKU images
-  // where at least one annotation has gpd==0 (detected successfully).
-  // Falls back to null if no self-SKU rows exist in this export.
+  // OSA (On Shelf Availability):
+  // For each (shop, date, category, actual_class) combination:
+  //   OSA = 100 if at least one annotation has actual_class == predicted_class, else 0.
+  // Per-shop OSA = count(combos where OSA=100) / count(all combos) * 100.
+  // Overall OSA = average of per-shop OSA values.
+  // Only uses eligible rows (same filter as group/class accuracy).
   const osaAcc = (() => {
-    const selfSkuRows = skuRows.filter((r) => col(r, "self/comp_actual", "self_comp_actual") === "self");
-    if (!selfSkuRows.length) return null;
-    const shops = groupByShop(selfSkuRows);
+    if (!eligibleRows.length) return null;
+    const shops = groupByShop(eligibleRows);
     const shopAccs = shops.map((shopRows) => {
-      // Group by image_id within this shop
-      const byImage: Record<string, typeof shopRows> = {};
+      // Group by (date, category, actual_class)
+      const combos: Record<string, Row[]> = {};
       for (const r of shopRows) {
-        const imgId = col(r, "image_id", "imageid");
-        if (!byImage[imgId]) byImage[imgId] = [];
-        byImage[imgId].push(r);
+        const key = `${col(r, "date")}||${col(r, "category_name")}||${col(r, "actual_class")}`;
+        if (!combos[key]) combos[key] = [];
+        combos[key].push(r);
       }
-      const imageIds = Object.keys(byImage);
-      if (!imageIds.length) return null;
-      const available = imageIds.filter((id) => byImage[id].some((r) => col(r, "gpd") === "0")).length;
-      return available / imageIds.length;
+      const comboKeys = Object.keys(combos);
+      if (!comboKeys.length) return null;
+      const correct = comboKeys.filter((k) =>
+        combos[k].some((r) => col(r, "actual_class") === col(r, "predicted_class"))
+      ).length;
+      return correct / comboKeys.length;
     }).filter((v): v is number => v !== null);
     return shopAccs.length ? shopAccs.reduce((a, b) => a + b, 0) / shopAccs.length : null;
   })();
@@ -197,7 +191,6 @@ export function computeCategoryMetrics(allRows: Row[], categoryName: string | nu
     class_accuracy: clsAcc,
     openset_accuracy: osAcc,
     osa_accuracy: osaAcc,
-    sos_accuracy: sosAcc,
     sticker_detector_accuracy: stickerDetAcc,
     sticker_value_accuracy: stickerValAcc,
   };

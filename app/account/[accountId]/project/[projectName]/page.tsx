@@ -14,8 +14,7 @@ interface Snapshot { id: string; test_date: string; row_count: number; file_name
 interface CategoryMetric {
   snapshot_id: string; category_name: string; total_annotations: number | null; image_count: number | null;
   gpd_accuracy: number | null; group_accuracy: number | null; class_accuracy: number | null;
-  openset_accuracy: number | null; osa_accuracy: number | null; sos_accuracy: number | null;
-  sticker_detector_accuracy: number | null; sticker_value_accuracy: number | null;
+  openset_accuracy: number | null; osa_accuracy: number | null;
 }
 interface ConfusionPair {
   snapshot_id: string; category_name: string; matrix_type: "class" | "group";
@@ -96,7 +95,7 @@ export default function ProjectPage() {
   const historicalData = useMemo(() => snapshots.map((snap) => {
     const m = historicalCategory === "ALL" ? categoryMetrics.filter((c) => c.snapshot_id === snap.id) : categoryMetrics.filter((c) => c.snapshot_id === snap.id && c.category_name === historicalCategory);
     const avg = (f: keyof CategoryMetric) => { const v = m.map((x) => x[f]).filter((x): x is number => typeof x === "number"); return v.length ? +(v.reduce((a, b) => a + b, 0) / v.length * 100).toFixed(2) : null; };
-    return { date: snap.test_date, Group: avg("group_accuracy"), Class: avg("class_accuracy"), GPD: avg("gpd_accuracy"), Openset: avg("openset_accuracy"), OSA: avg("osa_accuracy"), SOS: avg("sos_accuracy") };
+    return { date: snap.test_date, Group: avg("group_accuracy"), Class: avg("class_accuracy"), GPD: avg("gpd_accuracy"), Openset: avg("openset_accuracy"), OSA: avg("osa_accuracy") };
   }), [snapshots, categoryMetrics, historicalCategory]);
 
   const snapA = snapshots.find((s) => s.test_date === compareDateA);
@@ -118,14 +117,14 @@ export default function ProjectPage() {
   }, [confusionPairs, accuraciesFilter, accuraciesSearch, accuraciesSort, accuraciesCategory]);
 
   function exportCurrentCSV() {
-    const header = ["Category", "GPD Acc", "Group Acc", "Class Acc", "Openset Acc", "OSA Acc", "SOS Acc", "Annotations"];
-    const rows = latestCats.map((c) => [c.category_name, formatPct(c.gpd_accuracy), formatPct(c.group_accuracy), formatPct(c.class_accuracy), formatPct(c.openset_accuracy), formatPct(c.osa_accuracy), formatPct(c.sos_accuracy), c.total_annotations ?? "—"]);
+    const header = ["Category", "GPD Acc", "Group Acc", "Class Acc", "Openset Acc", "OSA Acc", "Annotations"];
+    const rows = latestCats.map((c) => [c.category_name, formatPct(c.gpd_accuracy), formatPct(c.group_accuracy), formatPct(c.class_accuracy), formatPct(c.openset_accuracy), formatPct(c.osa_accuracy), c.total_annotations ?? "—"]);
     downloadCSV([header, ...rows], `${project?.name}_current_${latestSnap?.test_date}.csv`);
   }
 
   function exportHistoricalCSV() {
-    const header = ["Date", "Group Acc", "Class Acc", "GPD Acc", "Openset Acc", "OSA Acc", "SOS Acc"];
-    const rows = historicalData.map((d) => [d.date, d.Group ?? "—", d.Class ?? "—", d.GPD ?? "—", d.Openset ?? "—", d.OSA ?? "—", d.SOS ?? "—"]);
+    const header = ["Date", "Group Acc", "Class Acc", "GPD Acc", "Openset Acc", "OSA Acc"];
+    const rows = historicalData.map((d) => [d.date, d.Group ?? "—", d.Class ?? "—", d.GPD ?? "—", d.Openset ?? "—", d.OSA ?? "—"]);
     downloadCSV([header, ...rows], `${project?.name}_historical.csv`);
   }
 
@@ -205,7 +204,7 @@ export default function ProjectPage() {
                 <div style={{ overflowX: "auto", background: "var(--surface-1)", borderRadius: 12, padding: "0.5rem", marginBottom: 28 }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                     <thead><tr style={{ borderBottom: "0.5px solid var(--border)" }}>
-                      {["Category", "GPD", "Group acc.", "Class acc.", "Openset", "OSA", "SOS", "Annotations"].map((h) => (
+                      {["Category", "GPD", "Group acc.", "Class acc.", "Openset", "OSA", "Annotations"].map((h) => (
                         <th key={h} style={{ textAlign: "left", padding: "8px 10px", color: "var(--text-muted)", fontWeight: 500, fontSize: 12 }}>{h}</th>
                       ))}
                     </tr></thead>
@@ -213,7 +212,7 @@ export default function ProjectPage() {
                       {latestCats.slice().sort((a, b) => a.category_name.localeCompare(b.category_name)).map((c) => (
                         <tr key={c.category_name} style={{ borderBottom: "0.5px solid var(--border)" }}>
                           <td style={{ padding: "8px 10px", fontWeight: 500, color: "var(--text-primary)" }}>{c.category_name}</td>
-                          {([c.gpd_accuracy, c.group_accuracy, c.class_accuracy, c.openset_accuracy, c.osa_accuracy, c.sos_accuracy] as (number | null)[]).map((v, i) => <td key={i} style={{ padding: "8px 10px" }}><Pill val={v} /></td>)}
+                          {([c.gpd_accuracy, c.group_accuracy, c.class_accuracy, c.openset_accuracy, c.osa_accuracy] as (number | null)[]).map((v, i) => <td key={i} style={{ padding: "8px 10px" }}><Pill val={v} /></td>)}
                           <td style={{ padding: "8px 10px", color: "var(--text-muted)" }}>{formatNumber(c.total_annotations)}</td>
                         </tr>
                       ))}
@@ -302,8 +301,7 @@ export default function ProjectPage() {
                       <Line type="monotone" dataKey="GPD" stroke="#D85A30" strokeWidth={2} dot={{ r: 3 }} connectNulls />
                       <Line type="monotone" dataKey="Openset" stroke="#7F77DD" strokeWidth={2} dot={{ r: 3 }} connectNulls />
                       <Line type="monotone" dataKey="OSA" stroke="#BA7517" strokeWidth={2} dot={{ r: 3 }} connectNulls />
-                      <Line type="monotone" dataKey="SOS" stroke="#993556" strokeWidth={2} dot={{ r: 3 }} connectNulls />
-                    </LineChart>
+                                    </LineChart>
                   </ResponsiveContainer>
                 </div>
               </div>
