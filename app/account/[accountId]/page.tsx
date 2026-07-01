@@ -5,6 +5,7 @@ import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
 import TopNav from "@/components/TopNav";
 import { useAuth } from "@/lib/auth";
+import { SkeletonCard } from "@/components/Skeleton";
 import Breadcrumb from "@/components/Breadcrumb";
 import { formatDate, formatRelativeTime, getHealthStatus, healthColor, pillColor } from "@/lib/format";
 
@@ -67,7 +68,19 @@ export default function AccountPage() {
 
   const isAdminUser = isSuperAdmin || isAdmin(accountId);
 
-  if (authLoading || loading) return <div style={{ minHeight: "100vh" }}><TopNav accountId={accountId} /><div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh" }}><p style={{ color: "var(--text-muted)" }}>Loading…</p></div></div>;
+  if (authLoading || loading) return (
+    <div style={{ minHeight: "100vh" }}>
+      <TopNav accountId={accountId} />
+      <div style={{ maxWidth: 1180, margin: "0 auto", padding: "2rem" }}>
+        <div style={{ height: 12, width: 180, marginBottom: 24 }} className="skeleton" />
+        <div style={{ height: 28, width: 260, marginBottom: 6 }} className="skeleton" />
+        <div style={{ height: 14, width: 120, marginBottom: 24 }} className="skeleton" />
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
+          {[1,2,3,4].map((i) => <SkeletonCard key={i} />)}
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div style={{ minHeight: "100vh" }}>
@@ -102,12 +115,8 @@ export default function AccountPage() {
               >
                 <div
                   onClick={() => router.push(`/account/${accountId}/project/${project.name}`)}
-                  style={{
-                    background: "var(--surface-1)", border: "0.5px solid var(--border)", borderRadius: 16,
-                    padding: "1.25rem", cursor: "pointer", transition: "box-shadow 0.2s, transform 0.2s, border-color 0.2s",
-                  }}
-                  onMouseOver={(e) => { e.currentTarget.style.boxShadow = `0 8px 20px ${style.glow}`; e.currentTarget.style.transform = "translateY(-3px)"; e.currentTarget.style.borderColor = style.border; }}
-                  onMouseOut={(e) => { e.currentTarget.style.boxShadow = "none"; e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.borderColor = "var(--border)"; }}
+                  className="project-card"
+                  style={{ "--status-border": style.border, "--status-glow": style.glow } as React.CSSProperties}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
                     <div style={{ width: 36, height: 36, borderRadius: 10, background: style.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>

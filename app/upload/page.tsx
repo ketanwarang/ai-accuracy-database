@@ -333,7 +333,7 @@ export default function UploadPage() {
           // Create new snapshot for this project+date
           const { data: snapRow, error: snapErr } = await supabase
             .from("snapshots")
-            .insert({ project_id: selectedProjectId, test_date: testDate, file_name: fileName, row_count: rows.length })
+            .insert({ project_id: selectedProjectId, test_date: testDate, file_name: fileName, row_count: rows.length, uploaded_by: supabase.auth.getUser ? (await supabase.auth.getUser()).data.user?.email || null : null })
             .select().single();
           if (snapErr || !snapRow) throw new Error("Failed to create snapshot: " + snapErr?.message);
           snapshotId = snapRow.id;
