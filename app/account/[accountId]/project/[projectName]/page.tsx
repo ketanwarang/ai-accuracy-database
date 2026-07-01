@@ -88,11 +88,13 @@ export default function ProjectPage() {
         const { data: cats } = await supabase.from("category_metrics").select("*").in("snapshot_id", snapIds);
         setCategoryMetrics(cats || []);
 
+        // Fetch confusion_pairs from ALL snapshots — with the per-category system,
+        // pairs may be stored in any snapshot (whichever was current at upload time).
+        const { data: conf } = await supabase.from("confusion_pairs").select("*").in("snapshot_id", snapIds);
+        setConfusionPairs(conf || []);
+
         const latestId = s[s.length - 1]?.id;
         if (latestId) {
-          const { data: conf } = await supabase.from("confusion_pairs").select("*").eq("snapshot_id", latestId);
-          setConfusionPairs(conf || []);
-
           // Load comments for latest snapshot
           try {
             const { data: comms } = await supabase.from("snapshot_comments").select("*").eq("snapshot_id", latestId).order("created_at", { ascending: true });
