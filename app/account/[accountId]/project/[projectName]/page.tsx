@@ -88,10 +88,22 @@ export default function ProjectPage() {
         const { data: cats } = await supabase.from("category_metrics").select("*").in("snapshot_id", snapIds);
         setCategoryMetrics(cats || []);
 
-        // Fetch confusion_pairs from ALL snapshots — with the per-category system,
-        // pairs may be stored in any snapshot (whichever was current at upload time).
-        const { data: conf } = await supabase.from("confusion_pairs").select("*").in("snapshot_id", snapIds);
-        setConfusionPairs(conf || []);
+        // Fetch confusion_pairs from ALL snapshots in pages (Supabase default limit is 1000)
+        const allConf: any[] = [];
+        const PAGE = 1000;
+        let from = 0;
+        while (true) {
+          const { data: page } = await supabase
+            .from("confusion_pairs")
+            .select("*")
+            .in("snapshot_id", snapIds)
+            .range(from, from + PAGE - 1);
+          if (!page || page.length === 0) break;
+          allConf.push(...page);
+          if (page.length < PAGE) break;
+          from += PAGE;
+        }
+        setConfusionPairs(allConf);
 
         const latestId = s[s.length - 1]?.id;
         if (latestId) {
