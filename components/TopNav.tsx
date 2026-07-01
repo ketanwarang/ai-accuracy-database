@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme, ACCENT_OPTIONS } from "@/lib/theme";
+import Logo from "@/components/Logo";
 import { useAuth } from "@/lib/auth";
 
 export default function TopNav({ accountId }: { accountId?: string }) {
@@ -36,15 +37,13 @@ export default function TopNav({ accountId }: { accountId?: string }) {
           height: 52, display: "flex", alignItems: "center", justifyContent: "space-between",
         }}>
           <div onClick={() => router.push("/")} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
-            <div style={{ width: 28, height: 28, borderRadius: 8, background: "var(--fill-accent)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <i className="ti ti-chart-bar" aria-hidden="true" style={{ fontSize: 15, color: "#fff" }}></i>
-            </div>
+            <Logo size={28} />
             <span style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)" }}>AI Accuracy Database</span>
           </div>
 
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button
-              onClick={() => window.location.reload()}
+              onClick={() => window.dispatchEvent(new CustomEvent("app:refresh"))}
               aria-label="Refresh data"
               title="Refresh data"
               style={{ padding: "6px 8px", background: "transparent", border: "none", display: "flex", alignItems: "center", gap: 4 }}

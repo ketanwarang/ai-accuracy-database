@@ -55,6 +55,12 @@ export default function ProjectPage() {
     loadData();
   }, [user, authLoading, projectName, accountId]);
 
+  useEffect(() => {
+    const handler = () => loadData();
+    window.addEventListener("app:refresh", handler);
+    return () => window.removeEventListener("app:refresh", handler);
+  }, [projectName, accountId]);
+
   async function loadData() {
     setLoading(true);
     const { data: proj } = await supabase.from("projects").select("id, name, display_name, account_id").eq("name", projectName).eq("account_id", accountId).maybeSingle();

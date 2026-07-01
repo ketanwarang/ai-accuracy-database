@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, Suspense } from "react";
+import Logo from "@/components/Logo";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
 
@@ -63,9 +64,7 @@ function LoginPageContent() {
         border: "0.5px solid var(--border)",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: "var(--fill-accent)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <i className="ti ti-chart-bar" aria-hidden="true" style={{ fontSize: 17, color: "#fff" }}></i>
-          </div>
+          <Logo size={36} />
           <span style={{ fontSize: 16, fontWeight: 500, color: "var(--text-primary)" }}>AI Accuracy Database</span>
         </div>
 

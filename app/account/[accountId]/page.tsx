@@ -33,6 +33,12 @@ export default function AccountPage() {
     loadData();
   }, [user, authLoading, accountId]);
 
+  useEffect(() => {
+    const handler = () => loadData();
+    window.addEventListener("app:refresh", handler);
+    return () => window.removeEventListener("app:refresh", handler);
+  }, [accountId]);
+
   async function loadData() {
     setLoading(true);
     const { data: acc } = await supabase.from("accounts").select("id, name, display_name").eq("id", accountId).maybeSingle();

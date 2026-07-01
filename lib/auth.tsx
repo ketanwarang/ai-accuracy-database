@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
 
@@ -33,56 +33,97 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+// Cache session in module scope so it persists across tab switches
+// without re-fetching on every mount
+let cachedUser: AuthUser | null = null;
+let cachedRoles: UserRole[] = [];
+let sessionChecked = false;
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
   const router = useRouter();
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [roles, setRoles] = useState<UserRole[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [user, setUser] = useState<AuthUser | null>(cachedUser);
+  const [roles, setRoles] = useState<UserRole[]>(cachedRoles);
+  const [loading, setLoading] = useState(!sessionChecked);
+  const initialized = useRef(false);
 
-  async function loadRoles(email: string) {
+  async function loadRoles(email: string): Promise<UserRole[]> {
     const { data } = await supabase
       .from("user_roles")
       .select("*")
       .eq("user_email", email);
-    setRoles(data || []);
+    return data || [];
   }
 
   async function refreshRoles() {
-    if (user?.email) await loadRoles(user.email);
+    if (user?.email) {
+      const r = await loadRoles(user.email);
+      setRoles(r);
+      cachedRoles = r;
+    }
   }
 
   useEffect(() => {
+    if (initialized.current) return;
+    initialized.current = true;
+
     (async () => {
+      // If we already have a cached session, skip the network call
+      if (sessionChecked && cachedUser !== null) {
+        setLoading(false);
+        return;
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
+      sessionChecked = true;
+
       if (session?.user) {
         const u = session.user;
-        setUser({
+        const authUser: AuthUser = {
           id: u.id,
           email: u.email!,
           name: u.user_metadata?.full_name || null,
           avatar_url: u.user_metadata?.avatar_url || null,
-        });
-        await loadRoles(u.email!);
+        };
+        const r = await loadRoles(u.email!);
+        cachedUser = authUser;
+        cachedRoles = r;
+        setUser(authUser);
+        setRoles(r);
+      } else {
+        cachedUser = null;
+        cachedRoles = [];
+        setUser(null);
+        setRoles([]);
       }
       setLoading(false);
     })();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        const u = session.user;
-        setUser({
-          id: u.id,
-          email: u.email!,
-          name: u.user_metadata?.full_name || null,
-          avatar_url: u.user_metadata?.avatar_url || null,
-        });
-        await loadRoles(u.email!);
-      } else {
-        setUser(null);
-        setRoles([]);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (event === "SIGNED_OUT") {
+          cachedUser = null;
+          cachedRoles = [];
+          sessionChecked = false;
+          setUser(null);
+          setRoles([]);
+        } else if (session?.user && event !== "TOKEN_REFRESHED") {
+          const u = session.user;
+          const authUser: AuthUser = {
+            id: u.id,
+            email: u.email!,
+            name: u.user_metadata?.full_name || null,
+            avatar_url: u.user_metadata?.avatar_url || null,
+          };
+          const r = await loadRoles(u.email!);
+          cachedUser = authUser;
+          cachedRoles = r;
+          setUser(authUser);
+          setRoles(r);
+          setLoading(false);
+        }
       }
-    });
+    );
 
     return () => subscription.unsubscribe();
   }, []);
@@ -119,6 +160,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   async function signOut() {
+    cachedUser = null;
+    cachedRoles = [];
+    sessionChecked = false;
     await supabase.auth.signOut();
     setUser(null);
     setRoles([]);
@@ -126,7 +170,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, roles, loading, isSuperAdmin, isAdmin, canAccessAccount, canAccessProject, signOut, refreshRoles }}>
+    <AuthContext.Provider
+      value={{ user, roles, loading, isSuperAdmin, isAdmin, canAccessAccount, canAccessProject, signOut, refreshRoles }}
+    >
       {children}
     </AuthContext.Provider>
   );

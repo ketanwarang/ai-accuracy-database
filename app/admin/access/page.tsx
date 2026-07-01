@@ -84,6 +84,12 @@ export default function AccessPage() {
     loadData();
   }
 
+  async function handleRevokeAll(email: string) {
+    if (!confirm(`Remove ALL access for ${email}? They will no longer be able to log in.`)) return;
+    await supabase.from("user_roles").delete().eq("user_email", email);
+    loadData();
+  }
+
   const accountMap = Object.fromEntries(accounts.map((a) => [a.id, a.display_name || a.name]));
   const projectMap = Object.fromEntries(projects.map((p) => [p.id, p.display_name || p.name]));
   const filteredProjects = projects.filter((p) => !selectedAccountId || p.account_id === selectedAccountId);
@@ -173,7 +179,12 @@ export default function AccessPage() {
                   <td style={{ padding: "8px 12px", color: "var(--text-muted)" }}>{r.account_id ? (accountMap[r.account_id] || "—") : "All accounts"}</td>
                   <td style={{ padding: "8px 12px", color: "var(--text-muted)" }}>{r.project_id ? (projectMap[r.project_id] || "—") : "All projects"}</td>
                   <td style={{ padding: "8px 12px" }}>
-                    {r.user_email !== user?.email && <button onClick={() => handleRevoke(r.id)} style={{ fontSize: 12, color: "var(--text-danger)", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>Revoke</button>}
+                    {r.user_email !== user?.email && (
+                      <div style={{ display: "flex", gap: 10 }}>
+                        <button onClick={() => handleRevoke(r.id)} style={{ fontSize: 12, color: "var(--text-warning)", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>Revoke</button>
+                        <button onClick={() => handleRevokeAll(r.user_email)} style={{ fontSize: 12, color: "var(--text-danger)", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}>Remove user</button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -32,6 +32,12 @@ export default function HomePage() {
     loadData();
   }, [user, authLoading]);
 
+  useEffect(() => {
+    const handler = () => loadData();
+    window.addEventListener("app:refresh", handler);
+    return () => window.removeEventListener("app:refresh", handler);
+  }, []);
+
   async function loadData() {
     setLoading(true);
     const { data: accountsData } = await supabase
