@@ -32,6 +32,7 @@ export default function ProjectPage() {
   const { user, loading: authLoading } = useAuth();
 
   const [loading, setLoading] = useState(true);
+  const [showLatestOnly, setShowLatestOnly] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [categoryMetrics, setCategoryMetrics] = useState<CategoryMetric[]>([]);
@@ -89,7 +90,37 @@ export default function ProjectPage() {
 
 
   const latestSnap = snapshots[snapshots.length - 1];
-  const latestCats = useMemo(() => categoryMetrics.filter((c) => c.snapshot_id === latestSnap?.id), [categoryMetrics, latestSnap]);
+
+  // Per-category latest: for each category_name, pick the row with the most recent test_date
+  const perCategoryLatest = useMemo(() => {
+    const byCategory: Record<string, { metric: CategoryMetric; test_date: string }> = {};
+    snapshots.forEach((snap) => {
+      categoryMetrics.filter((cm) => cm.snapshot_id === snap.id).forEach((cm) => {
+        const existing = byCategory[cm.category_name];
+        if (!existing || snap.test_date > existing.test_date) {
+          byCategory[cm.category_name] = { metric: cm, test_date: snap.test_date };
+        }
+      });
+    });
+    return byCategory;
+  }, [snapshots, categoryMetrics]);
+
+  // Latest date across all categories
+  const overallLatestDate = useMemo(() => {
+    const dates = Object.values(perCategoryLatest).map((v) => v.test_date);
+    return dates.length ? dates.reduce((a, b) => (a > b ? a : b)) : null;
+  }, [perCategoryLatest]);
+
+  // What to show on Current tab: all categories latest OR only those matching the overall latest date
+  const latestCats = useMemo(() => {
+    const all = Object.values(perCategoryLatest).map((v) => v.metric);
+    if (showLatestOnly && overallLatestDate) {
+      return all.filter((_, i) =>
+        Object.values(perCategoryLatest)[i].test_date === overallLatestDate
+      );
+    }
+    return all;
+  }, [perCategoryLatest, showLatestOnly, overallLatestDate]);
   const categories = useMemo(() => [...new Set(categoryMetrics.map((c) => c.category_name))].sort(), [categoryMetrics]);
 
   const historicalData = useMemo(() => snapshots.map((snap) => {
@@ -199,12 +230,18 @@ export default function ProjectPage() {
 
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
                   <p style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", margin: 0 }}>Category metrics</p>
-                  <button onClick={exportCurrentCSV} style={{ fontSize: 12, padding: "5px 10px" }}><i className="ti ti-download" aria-hidden="true" style={{ marginRight: 4, fontSize: 13 }}></i>Export</button>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-muted)", cursor: "pointer" }}>
+                      <input type="checkbox" checked={showLatestOnly} onChange={(e) => setShowLatestOnly(e.target.checked)} style={{ accentColor: "var(--fill-accent)" }} />
+                      Latest date only ({overallLatestDate ? formatDate(overallLatestDate) : "—"})
+                    </label>
+                    <button onClick={exportCurrentCSV} style={{ fontSize: 12, padding: "5px 10px" }}><i className="ti ti-download" aria-hidden="true" style={{ marginRight: 4, fontSize: 13 }}></i>Export</button>
+                  </div>
                 </div>
                 <div style={{ overflowX: "auto", background: "var(--surface-1)", borderRadius: 12, padding: "0.5rem", marginBottom: 28 }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                     <thead><tr style={{ borderBottom: "0.5px solid var(--border)" }}>
-                      {["Category", "GPD", "Group acc.", "Class acc.", "Openset", "OSA", "Annotations"].map((h) => (
+                      {["Category", "Date", "GPD", "Group acc.", "Class acc.", "Openset", "OSA", "Annotations"].map((h) => (
                         <th key={h} style={{ textAlign: "left", padding: "8px 10px", color: "var(--text-muted)", fontWeight: 500, fontSize: 12 }}>{h}</th>
                       ))}
                     </tr></thead>
@@ -212,6 +249,7 @@ export default function ProjectPage() {
                       {latestCats.slice().sort((a, b) => a.category_name.localeCompare(b.category_name)).map((c) => (
                         <tr key={c.category_name} style={{ borderBottom: "0.5px solid var(--border)" }}>
                           <td style={{ padding: "8px 10px", fontWeight: 500, color: "var(--text-primary)" }}>{c.category_name}</td>
+                          <td style={{ padding: "8px 10px", color: "var(--text-muted)", fontSize: 12, whiteSpace: "nowrap" }}>{formatDate(perCategoryLatest[c.category_name]?.test_date)}</td>
                           {([c.gpd_accuracy, c.group_accuracy, c.class_accuracy, c.openset_accuracy, c.osa_accuracy] as (number | null)[]).map((v, i) => <td key={i} style={{ padding: "8px 10px" }}><Pill val={v} /></td>)}
                           <td style={{ padding: "8px 10px", color: "var(--text-muted)" }}>{formatNumber(c.total_annotations)}</td>
                         </tr>
@@ -374,6 +412,7 @@ function IssuesTab({ snapId, testDate, issuesFilter, setIssuesFilter, issuesSort
   const supabase = createClient();
   const [issues, setIssues] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showLatestOnly, setShowLatestOnly] = useState(false);
 
   useEffect(() => {
     if (!snapId) { setLoading(false); return; }

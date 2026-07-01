@@ -111,6 +111,7 @@ export default function TopNav({ accountId }: { accountId?: string }) {
               <DrawerItem icon="ti-building" label="Manage accounts" onClick={() => { router.push("/admin/accounts"); setDrawerOpen(false); }} />
               <DrawerItem icon="ti-folder" label="Manage projects" onClick={() => { router.push("/admin/projects"); setDrawerOpen(false); }} />
               <DrawerItem icon="ti-users" label="Access & roles" onClick={() => { router.push("/admin/access"); setDrawerOpen(false); }} />
+            <DrawerItem icon="ti-database" label="Data management" onClick={() => { router.push("/admin/data"); setDrawerOpen(false); }} />
             </DrawerSection>
           )}
 
