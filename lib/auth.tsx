@@ -1,8 +1,17 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
+
+// Routes reachable without a completed password change
+const PASSWORD_CHANGE_EXEMPT_ROUTES = [
+  "/login",
+  "/create-account",
+  "/forgot-password",
+  "/reset-password",
+  "/change-password",
+];
 
 export interface UserRole {
   id: string;
@@ -17,6 +26,7 @@ export interface AuthUser {
   email: string;
   name: string | null;
   avatar_url: string | null;
+  mustChangePassword: boolean;
 }
 
 interface AuthContextValue {
@@ -42,6 +52,7 @@ let sessionChecked = false;
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = createClient();
   const router = useRouter();
+  const pathname = usePathname();
   const [user, setUser] = useState<AuthUser | null>(cachedUser);
   const [roles, setRoles] = useState<UserRole[]>(cachedRoles);
   const [loading, setLoading] = useState(!sessionChecked);
@@ -84,6 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: u.email!,
           name: u.user_metadata?.full_name || null,
           avatar_url: u.user_metadata?.avatar_url || null,
+          mustChangePassword: u.user_metadata?.must_change_password === true,
         };
         const r = await loadRoles(u.email!);
         cachedUser = authUser;
@@ -114,6 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             email: u.email!,
             name: u.user_metadata?.full_name || null,
             avatar_url: u.user_metadata?.avatar_url || null,
+            mustChangePassword: u.user_metadata?.must_change_password === true,
           };
           const r = await loadRoles(u.email!);
           cachedUser = authUser;
@@ -127,6 +140,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => subscription.unsubscribe();
   }, []);
+
+  // Hard-block navigation until a temporary password has been changed
+  useEffect(() => {
+    if (loading || !user?.mustChangePassword) return;
+    if (!PASSWORD_CHANGE_EXEMPT_ROUTES.includes(pathname)) {
+      router.push("/change-password");
+    }
+  }, [loading, user, pathname]);
 
   const isSuperAdmin = roles.some(
     (r) => r.role === "super_admin" && !r.account_id && !r.project_id

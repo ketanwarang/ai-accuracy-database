@@ -104,7 +104,10 @@ export default function AccessPage() {
           <i className="ti ti-arrow-left" aria-hidden="true" style={{ fontSize: 14 }}></i> Back
         </button>
         <h1 style={{ fontSize: 20, fontWeight: 500, color: "var(--text-primary)", margin: "0 0 4px" }}>Access and roles</h1>
-        <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 24px" }}>Grant @paralleldots.com users access to accounts and projects.</p>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 4px" }}>Grant @paralleldots.com users access to accounts and projects.</p>
+        <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 24px" }}>
+          After granting access, share this link so they can create their account: <code style={{ background: "var(--surface-2)", padding: "1px 6px", borderRadius: 4 }}>/create-account</code>
+        </p>
 
         <div style={{ background: "var(--surface-1)", borderRadius: 12, padding: "1.25rem", marginBottom: 24 }}>
           <p style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", margin: "0 0 14px" }}>Grant access</p>

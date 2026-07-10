@@ -9,6 +9,7 @@ import ErrorBoundary from "@/components/ErrorBoundary";
 import { SkeletonTable, SkeletonText } from "@/components/Skeleton";
 import { useAuth } from "@/lib/auth";
 import { formatDate, formatPct, formatNumber, pillColor, getHealthStatus, healthColor } from "@/lib/format";
+import { getCached, setCached } from "@/lib/dataCache";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 interface Project { id: string; name: string; display_name: string | null; account_id: string; }
@@ -26,6 +27,16 @@ interface ConfusionPair {
 }
 interface Comment { id: string; snapshot_id: string; author_email: string; body: string; created_at: string; }
 type Tab = "current" | "historical" | "comparison" | "issues" | "mistakes";
+
+interface ProjectCache {
+  project: Project | null;
+  snapshots: Snapshot[];
+  categoryMetrics: CategoryMetric[];
+  confusionPairs: ConfusionPair[];
+  comments: Comment[];
+  compareDateA: string;
+  compareDateB: string;
+}
 
 const METRICS = [
   { key: "gpd_accuracy", label: "GPD" },
@@ -71,9 +82,12 @@ export default function ProjectPage() {
   const [showLatestOnly, setShowLatestOnly] = useState(false);
   const [showComments, setShowComments] = useState(false);
 
-  const loadData = useCallback(async () => {
+  const cacheKey = `project:${accountId}:${projectName}`;
+
+  const loadData = useCallback(async (showSkeleton = true) => {
     if (!user) return;
-    setLoading(true); setError(null);
+    if (showSkeleton) setLoading(true);
+    setError(null);
     try {
       const { data: proj } = await supabase.from("projects").select("id, name, display_name, account_id").eq("name", projectName).eq("account_id", accountId).maybeSingle();
       if (!proj) { setLoading(false); return; }
@@ -83,13 +97,19 @@ export default function ProjectPage() {
       const { data: snaps } = await supabase.from("snapshots").select("id, test_date, row_count, file_name, uploaded_at, uploaded_by").eq("project_id", proj.id).gte("test_date", sixAgo.toISOString().slice(0, 10)).order("test_date", { ascending: true });
       const s = snaps || []; setSnapshots(s);
 
+      let cats: CategoryMetric[] = [];
+      let allConf: ConfusionPair[] = [];
+      let comms: Comment[] = [];
+      let dateA = "";
+      let dateB = "";
+
       const snapIds = s.map((x) => x.id);
       if (snapIds.length) {
-        const { data: cats } = await supabase.from("category_metrics").select("*").in("snapshot_id", snapIds);
-        setCategoryMetrics(cats || []);
+        const { data: catsData } = await supabase.from("category_metrics").select("*").in("snapshot_id", snapIds);
+        cats = catsData || [];
+        setCategoryMetrics(cats);
 
         // Fetch confusion_pairs from ALL snapshots in pages (Supabase default limit is 1000)
-        const allConf: any[] = [];
         const PAGE = 1000;
         let from = 0;
         while (true) {
@@ -109,13 +129,21 @@ export default function ProjectPage() {
         if (latestId) {
           // Load comments for latest snapshot
           try {
-            const { data: comms } = await supabase.from("snapshot_comments").select("*").eq("snapshot_id", latestId).order("created_at", { ascending: true });
-            setComments(comms || []);
+            const { data: commsData } = await supabase.from("snapshot_comments").select("*").eq("snapshot_id", latestId).order("created_at", { ascending: true });
+            comms = commsData || [];
+            setComments(comms);
           } catch { setComments([]); }
         }
-        setCompareDateA(s[s.length - 1]?.test_date || "");
-        setCompareDateB(s.length > 1 ? s[s.length - 2].test_date : s[s.length - 1]?.test_date || "");
+        dateA = s[s.length - 1]?.test_date || "";
+        dateB = s.length > 1 ? s[s.length - 2].test_date : s[s.length - 1]?.test_date || "";
+        setCompareDateA(dateA);
+        setCompareDateB(dateB);
       }
+
+      setCached<ProjectCache>(cacheKey, {
+        project: proj, snapshots: s, categoryMetrics: cats, confusionPairs: allConf,
+        comments: comms, compareDateA: dateA, compareDateB: dateB,
+      });
     } catch (err: any) {
       setError(err.message || "Failed to load project data");
     } finally {
@@ -126,11 +154,22 @@ export default function ProjectPage() {
   useEffect(() => {
     if (authLoading) return;
     if (!user) { router.push("/login"); return; }
-    loadData();
-  }, [user, authLoading]);
+    const cached = getCached<ProjectCache>(cacheKey);
+    if (cached) {
+      setProject(cached.project);
+      setSnapshots(cached.snapshots);
+      setCategoryMetrics(cached.categoryMetrics);
+      setConfusionPairs(cached.confusionPairs);
+      setComments(cached.comments);
+      setCompareDateA(cached.compareDateA);
+      setCompareDateB(cached.compareDateB);
+      setLoading(false);
+    }
+    loadData(!cached);
+  }, [user, authLoading, accountId, projectName]);
 
   useEffect(() => {
-    const handler = () => loadData();
+    const handler = () => loadData(false);
     window.addEventListener("app:refresh", handler);
     return () => window.removeEventListener("app:refresh", handler);
   }, [loadData]);
@@ -293,7 +332,7 @@ export default function ProjectPage() {
         <div style={{ background: "var(--bg-danger)", border: "0.5px solid var(--border-danger)", borderRadius: "var(--radius-lg)", padding: "1.25rem" }}>
           <p style={{ color: "var(--text-danger)", fontWeight: 500 }}>Failed to load project</p>
           <p style={{ color: "var(--text-danger)", fontSize: 13, opacity: 0.8, margin: "4px 0 12px" }}>{error}</p>
-          <button onClick={loadData}>Try again</button>
+          <button onClick={() => loadData()}>Try again</button>
         </div>
       </div>
     </div>

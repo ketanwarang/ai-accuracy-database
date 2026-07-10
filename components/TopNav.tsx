@@ -115,6 +115,10 @@ export default function TopNav({ accountId }: { accountId?: string }) {
             </DrawerSection>
           )}
 
+          <DrawerSection label="Account">
+            <DrawerItem icon="ti-key" label="Change password" onClick={() => { router.push("/change-password"); setDrawerOpen(false); }} />
+          </DrawerSection>
+
           <DrawerSection label="Appearance">
             <div style={{ padding: "0 12px 8px" }}>
               <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "0 0 6px", letterSpacing: "0.03em" }}>Mode</p>

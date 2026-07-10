@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
 import TopNav from "@/components/TopNav";
 import { useAuth } from "@/lib/auth";
+import { getCached, setCached } from "@/lib/dataCache";
 
 interface Account {
   id: string;
@@ -16,6 +17,13 @@ interface ProjectCount {
   account_id: string;
   count: number;
 }
+
+interface HomeCache {
+  accounts: Account[];
+  projectCounts: Record<string, number>;
+}
+
+const CACHE_KEY = "home";
 
 export default function HomePage() {
   const router = useRouter();
@@ -29,23 +37,30 @@ export default function HomePage() {
   useEffect(() => {
     if (authLoading) return;
     if (!user) { router.push("/login"); return; }
-    loadData();
+    const cached = getCached<HomeCache>(CACHE_KEY);
+    if (cached) {
+      setAccounts(cached.accounts);
+      setProjectCounts(cached.projectCounts);
+      setLoading(false);
+    }
+    loadData(!cached);
   }, [user, authLoading]);
 
   useEffect(() => {
-    const handler = () => loadData();
+    const handler = () => loadData(false);
     window.addEventListener("app:refresh", handler);
     return () => window.removeEventListener("app:refresh", handler);
   }, []);
 
-  async function loadData() {
-    setLoading(true);
+  async function loadData(showSkeleton = true) {
+    if (showSkeleton) setLoading(true);
     const { data: accountsData } = await supabase
       .from("accounts")
       .select("id, name, display_name")
       .eq("is_active", true)
       .order("display_name");
-    setAccounts(accountsData || []);
+    const accountsResult = accountsData || [];
+    setAccounts(accountsResult);
 
     const { data: projects } = await supabase
       .from("projects")
@@ -58,6 +73,7 @@ export default function HomePage() {
     });
     setProjectCounts(counts);
     setLoading(false);
+    setCached<HomeCache>(CACHE_KEY, { accounts: accountsResult, projectCounts: counts });
   }
 
   if (authLoading || loading) {

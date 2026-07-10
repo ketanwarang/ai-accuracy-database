@@ -8,17 +8,26 @@ import { useAuth } from "@/lib/auth";
 import { SkeletonCard } from "@/components/Skeleton";
 import Breadcrumb from "@/components/Breadcrumb";
 import { formatDate, formatRelativeTime, getHealthStatus, healthColor, pillColor } from "@/lib/format";
+import { getCached, setCached } from "@/lib/dataCache";
 
 interface Account { id: string; name: string; display_name: string | null; }
 interface Project { id: string; name: string; display_name: string | null; account_id: string; }
 interface Snapshot { id: string; project_id: string; test_date: string; }
 interface CatMetric { snapshot_id: string; category_name: string; gpd_accuracy: number | null; group_accuracy: number | null; class_accuracy: number | null; osa_accuracy: number | null; }
 
+interface AccountCache {
+  account: Account | null;
+  projects: Project[];
+  snapshots: Record<string, Snapshot>;
+  catMetrics: Record<string, CatMetric[]>;
+}
+
 export default function AccountPage() {
   const router = useRouter();
   const { accountId } = useParams() as { accountId: string };
   const supabase = createClient();
   const { user, loading: authLoading, isSuperAdmin, isAdmin } = useAuth();
+  const cacheKey = `account:${accountId}`;
 
   const [account, setAccount] = useState<Account | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -31,32 +40,41 @@ export default function AccountPage() {
   useEffect(() => {
     if (authLoading) return;
     if (!user) { router.push("/login"); return; }
-    loadData();
+    const cached = getCached<AccountCache>(cacheKey);
+    if (cached) {
+      setAccount(cached.account);
+      setProjects(cached.projects);
+      setSnapshots(cached.snapshots);
+      setCatMetrics(cached.catMetrics);
+      setLoading(false);
+    }
+    loadData(!cached);
   }, [user, authLoading, accountId]);
 
   useEffect(() => {
-    const handler = () => loadData();
+    const handler = () => loadData(false);
     window.addEventListener("app:refresh", handler);
     return () => window.removeEventListener("app:refresh", handler);
   }, [accountId]);
 
-  async function loadData() {
-    setLoading(true);
+  async function loadData(showSkeleton = true) {
+    if (showSkeleton) setLoading(true);
     const { data: acc } = await supabase.from("accounts").select("id, name, display_name").eq("id", accountId).maybeSingle();
     setAccount(acc);
 
     const { data: projs } = await supabase.from("projects").select("id, name, display_name, account_id").eq("account_id", accountId).eq("is_active", true).order("display_name");
-    setProjects(projs || []);
+    const projsResult = projs || [];
+    setProjects(projsResult);
 
-    const { data: snaps } = await supabase.from("current_snapshots").select("id, project_id, test_date").in("project_id", (projs || []).map((p: any) => p.id));
+    const { data: snaps } = await supabase.from("current_snapshots").select("id, project_id, test_date").in("project_id", projsResult.map((p: any) => p.id));
     const snapMap: Record<string, Snapshot> = {};
     (snaps || []).forEach((s: any) => (snapMap[s.project_id] = s));
     setSnapshots(snapMap);
 
+    let cMap: Record<string, CatMetric[]> = {};
     const snapIds = (snaps || []).map((s: any) => s.id);
     if (snapIds.length) {
       const { data: cats } = await supabase.from("category_metrics").select("snapshot_id, category_name, gpd_accuracy, group_accuracy, class_accuracy, osa_accuracy").in("snapshot_id", snapIds);
-      const cMap: Record<string, CatMetric[]> = {};
       (cats || []).forEach((c: any) => {
         const pid = Object.keys(snapMap).find((k) => snapMap[k].id === c.snapshot_id);
         if (pid) { if (!cMap[pid]) cMap[pid] = []; cMap[pid].push(c); }
@@ -64,6 +82,7 @@ export default function AccountPage() {
       setCatMetrics(cMap);
     }
     setLoading(false);
+    setCached<AccountCache>(cacheKey, { account: acc, projects: projsResult, snapshots: snapMap, catMetrics: cMap });
   }
 
   const isAdminUser = isSuperAdmin || isAdmin(accountId);

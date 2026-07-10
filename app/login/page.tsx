@@ -2,7 +2,8 @@
 
 import { useState, Suspense } from "react";
 import Logo from "@/components/Logo";
-import { useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -13,38 +14,43 @@ const ERROR_MESSAGES: Record<string, string> = {
 
 function LoginPageContent() {
   const supabase = createClient();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const errorCode = searchParams.get("error");
 
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [password, setPassword] = useState("");
+  const [status, setStatus] = useState<"idle" | "signing-in" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
-  async function handleSendLink() {
+  async function handleSignIn() {
     const trimmed = email.trim().toLowerCase();
     if (!trimmed) { setErrorMsg("Enter your email."); return; }
     if (!trimmed.endsWith("@paralleldots.com")) {
       setErrorMsg("Only @paralleldots.com accounts are allowed.");
       return;
     }
+    if (!password) { setErrorMsg("Enter your password."); return; }
 
-    setStatus("sending");
+    setStatus("signing-in");
     setErrorMsg("");
 
-    const { error } = await supabase.auth.signInWithOtp({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: trimmed,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-        shouldCreateUser: true,
-      },
+      password,
     });
 
     if (error) {
-      setErrorMsg(error.message);
+      const friendly = /invalid login credentials/i.test(error.message)
+        ? "Incorrect email or password."
+        : error.message;
+      setErrorMsg(friendly);
       setStatus("error");
-    } else {
-      setStatus("sent");
+      return;
     }
+
+    const mustChangePassword = data.user?.user_metadata?.must_change_password === true;
+    router.push(mustChangePassword ? "/change-password" : "/");
   }
 
   return (
@@ -77,64 +83,56 @@ function LoginPageContent() {
           </div>
         )}
 
-        {status === "sent" ? (
-          <div style={{ textAlign: "center", padding: "1rem 0" }}>
-            <div style={{ width: 48, height: 48, borderRadius: "50%", background: "var(--bg-success)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
-              <i className="ti ti-mail" aria-hidden="true" style={{ fontSize: 22, color: "var(--text-success)" }}></i>
-            </div>
-            <h2 style={{ fontSize: 17, fontWeight: 500, color: "var(--text-primary)", margin: "0 0 8px" }}>Check your email</h2>
-            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 20px" }}>
-              A sign-in link was sent to<br />
-              <strong style={{ color: "var(--text-primary)" }}>{email}</strong>
-            </p>
-            <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 16px" }}>
-              Click the link in the email to sign in. It expires in 1 hour.
-            </p>
-            <button
-              onClick={() => { setStatus("idle"); setEmail(""); }}
-              style={{ fontSize: 13, color: "var(--text-accent)", background: "transparent", border: "none", cursor: "pointer", padding: 0 }}
-            >
-              Use a different email
-            </button>
-          </div>
-        ) : (
-          <>
-            <h1 style={{ fontSize: 20, fontWeight: 500, color: "var(--text-primary)", margin: "0 0 6px" }}>Sign in</h1>
-            <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 20px" }}>
-              Enter your ParallelDots email to receive a sign-in link.
-            </p>
+        <h1 style={{ fontSize: 20, fontWeight: 500, color: "var(--text-primary)", margin: "0 0 6px" }}>Sign in</h1>
+        <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 20px" }}>
+          Enter your ParallelDots email and password.
+        </p>
 
-            <label style={{ fontSize: 12, color: "var(--text-secondary)", display: "block", marginBottom: 6 }}>
-              Email
-            </label>
-            <input
-              type="email"
-              autoFocus
-              placeholder="you@paralleldots.com"
-              value={email}
-              onChange={(e) => { setEmail(e.target.value); setErrorMsg(""); }}
-              onKeyDown={(e) => e.key === "Enter" && handleSendLink()}
-              style={{ width: "100%", marginBottom: 10 }}
-            />
+        <label style={{ fontSize: 12, color: "var(--text-secondary)", display: "block", marginBottom: 6 }}>
+          Email
+        </label>
+        <input
+          type="email"
+          autoFocus
+          placeholder="you@paralleldots.com"
+          value={email}
+          onChange={(e) => { setEmail(e.target.value); setErrorMsg(""); }}
+          onKeyDown={(e) => e.key === "Enter" && handleSignIn()}
+          style={{ width: "100%", marginBottom: 10 }}
+        />
 
-            {errorMsg && (
-              <p style={{ fontSize: 12, color: "var(--text-danger)", margin: "0 0 10px" }}>{errorMsg}</p>
-            )}
+        <label style={{ fontSize: 12, color: "var(--text-secondary)", display: "block", marginBottom: 6 }}>
+          Password
+        </label>
+        <input
+          type="password"
+          placeholder="••••••••••••"
+          value={password}
+          onChange={(e) => { setPassword(e.target.value); setErrorMsg(""); }}
+          onKeyDown={(e) => e.key === "Enter" && handleSignIn()}
+          style={{ width: "100%", marginBottom: 6 }}
+        />
 
-            <button
-              onClick={handleSendLink}
-              disabled={status === "sending"}
-              className="primary"
-              style={{ width: "100%", marginTop: 4 }}
-            >
-              {status === "sending" ? "Sending…" : "Send sign-in link"}
-            </button>
+        <div style={{ textAlign: "right", marginBottom: 10 }}>
+          <Link href="/forgot-password" style={{ fontSize: 12 }}>Forgot password?</Link>
+        </div>
 
-            <p style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", marginTop: 16 }}>
-              Only @paralleldots.com accounts have access.
-            </p>
-          </>
+        {errorMsg && (
+          <p style={{ fontSize: 12, color: "var(--text-danger)", margin: "0 0 10px" }}>{errorMsg}</p>
         )}
+
+        <button
+          onClick={handleSignIn}
+          disabled={status === "signing-in"}
+          className="primary"
+          style={{ width: "100%", marginTop: 4 }}
+        >
+          {status === "signing-in" ? "Signing in…" : "Sign in"}
+        </button>
+
+        <p style={{ fontSize: 12, color: "var(--text-muted)", textAlign: "center", marginTop: 16 }}>
+          Don't have an account yet? <Link href="/create-account">Create one</Link>
+        </p>
       </div>
     </div>
   );
