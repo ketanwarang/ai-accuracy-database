@@ -4,17 +4,19 @@ import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Logo from "@/components/Logo";
 import { createClient } from "@/lib/supabaseClient";
+import { useAuth } from "@/lib/auth";
 
 function ResetPasswordContent() {
   const supabase = createClient();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { user } = useAuth();
 
   const [ready, setReady] = useState(false);
   const [invalid, setInvalid] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [status, setStatus] = useState<"idle" | "saving" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
   useEffect(() => {
@@ -29,6 +31,12 @@ function ResetPasswordContent() {
       setReady(true);
     })();
   }, []);
+
+  // Navigate home once the auth context confirms must_change_password has
+  // cleared, instead of racing a redirect against that async state update.
+  useEffect(() => {
+    if (status === "saved" && user?.mustChangePassword !== true) router.push("/");
+  }, [status, user]);
 
   async function handleSave() {
     if (password.length < 8) { setErrorMsg("Password must be at least 8 characters."); return; }
@@ -48,7 +56,7 @@ function ResetPasswordContent() {
       return;
     }
 
-    router.push("/");
+    setStatus("saved");
   }
 
   return (
@@ -120,11 +128,11 @@ function ResetPasswordContent() {
 
             <button
               onClick={handleSave}
-              disabled={status === "saving"}
+              disabled={status === "saving" || status === "saved"}
               className="primary"
               style={{ width: "100%", marginTop: 10 }}
             >
-              {status === "saving" ? "Saving…" : "Save password"}
+              {status === "saving" || status === "saved" ? "Saving…" : "Save password"}
             </button>
           </>
         )}

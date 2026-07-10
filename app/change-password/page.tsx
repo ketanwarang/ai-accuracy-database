@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
 import { createClient } from "@/lib/supabaseClient";
@@ -13,10 +13,17 @@ export default function ChangePasswordPage() {
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [status, setStatus] = useState<"idle" | "saving" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [errorMsg, setErrorMsg] = useState("");
 
   const mandatory = user?.mustChangePassword === true;
+
+  // Navigate home once the auth context confirms must_change_password has
+  // cleared, instead of racing a redirect against that async state update
+  // (which would otherwise get bounced back here by the auth guard).
+  useEffect(() => {
+    if (status === "saved" && !mandatory) router.push("/");
+  }, [status, mandatory]);
 
   async function handleSave() {
     if (password.length < 8) { setErrorMsg("Password must be at least 8 characters."); return; }
@@ -36,7 +43,7 @@ export default function ChangePasswordPage() {
       return;
     }
 
-    router.push("/");
+    setStatus("saved");
   }
 
   if (authLoading) return <div style={{ minHeight: "100vh", background: "var(--surface-0)" }} />;
@@ -108,11 +115,11 @@ export default function ChangePasswordPage() {
 
         <button
           onClick={handleSave}
-          disabled={status === "saving"}
+          disabled={status === "saving" || status === "saved"}
           className="primary"
           style={{ width: "100%", marginTop: 10 }}
         >
-          {status === "saving" ? "Saving…" : "Save password"}
+          {status === "saving" || status === "saved" ? "Saving…" : "Save password"}
         </button>
       </div>
     </div>
