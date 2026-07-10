@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
 import TopNav from "@/components/TopNav";
 import { useAuth } from "@/lib/auth";
+import { SkeletonTable } from "@/components/Skeleton";
 
 interface Account { id: string; name: string; display_name: string | null; }
 interface Project { id: string; name: string; display_name: string | null; account_id: string; }
@@ -77,6 +78,7 @@ export default function AccessPage() {
     setEmail(""); setSelectedProjectIds(new Set());
     loadData();
     setSaving(false);
+    setTimeout(() => setSuccess(""), 4000);
   }
 
   async function handleRevoke(id: string) {
@@ -94,7 +96,17 @@ export default function AccessPage() {
   const projectMap = Object.fromEntries(projects.map((p) => [p.id, p.display_name || p.name]));
   const filteredProjects = projects.filter((p) => !selectedAccountId || p.account_id === selectedAccountId);
 
-  if (authLoading || loading) return <div style={{ minHeight: "100vh" }}><TopNav /></div>;
+  if (authLoading || loading) return (
+    <div style={{ minHeight: "100vh" }}>
+      <TopNav />
+      <div style={{ maxWidth: 900, margin: "0 auto", padding: "2rem" }}>
+        <div style={{ height: 12, width: 60, marginBottom: 14 }} className="skeleton" />
+        <div style={{ height: 24, width: 200, marginBottom: 6 }} className="skeleton" />
+        <div style={{ height: 14, width: 320, marginBottom: 24 }} className="skeleton" />
+        <SkeletonTable rows={4} cols={5} />
+      </div>
+    </div>
+  );
 
   return (
     <div style={{ minHeight: "100vh" }}>
@@ -161,20 +173,27 @@ export default function AccessPage() {
             </div>
           )}
 
-          {error && <p style={{ fontSize: 12, color: "var(--text-danger)", margin: "0 0 8px" }}>{error}</p>}
-          {success && <p style={{ fontSize: 12, color: "var(--text-success)", margin: "0 0 8px" }}>{success}</p>}
+          {error && <p className="flash-message" style={{ fontSize: 12, color: "var(--text-danger)", margin: "0 0 8px" }}>{error}</p>}
+          {success && <p className="flash-message" style={{ fontSize: 12, color: "var(--text-success)", margin: "0 0 8px" }}>{success}</p>}
           <button className="primary" onClick={handleGrant} disabled={saving}>{saving ? "Saving…" : "Grant access"}</button>
         </div>
 
         <p style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)", margin: "0 0 10px" }}>Current access ({roles.length})</p>
+        {!roles.length ? (
+          <div className="empty-state">
+            <div className="empty-icon"><i className="ti ti-users" aria-hidden="true"></i></div>
+            <p className="empty-title">No access granted yet</p>
+            <p>Use the form above to grant a user access.</p>
+          </div>
+        ) : (
         <div style={{ background: "var(--surface-1)", borderRadius: 12, overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead><tr style={{ borderBottom: "0.5px solid var(--border)" }}>
               {["Email", "Role", "Account", "Project", ""].map((h) => <th key={h} style={{ textAlign: "left", padding: "8px 12px", color: "var(--text-muted)", fontWeight: 500, fontSize: 12 }}>{h}</th>)}
             </tr></thead>
             <tbody>
-              {roles.map((r) => (
-                <tr key={r.id} style={{ borderBottom: "0.5px solid var(--border)" }}>
+              {roles.map((r, idx) => (
+                <tr key={r.id} style={{ borderBottom: "0.5px solid var(--border)", opacity: 0, animation: `fadeIn 0.25s ease-out ${Math.min(idx * 0.03, 0.3)}s forwards` }}>
                   <td style={{ padding: "8px 12px" }}>{r.user_email}</td>
                   <td style={{ padding: "8px 12px" }}>
                     <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 20, background: r.role === "super_admin" ? "var(--bg-danger)" : r.role === "admin" ? "var(--bg-accent)" : "var(--surface-2)", color: r.role === "super_admin" ? "var(--text-danger)" : r.role === "admin" ? "var(--text-accent)" : "var(--text-muted)" }}>{r.role}</span>
@@ -194,6 +213,7 @@ export default function AccessPage() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </div>
   );

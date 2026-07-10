@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
 import TopNav from "@/components/TopNav";
 import { useAuth } from "@/lib/auth";
+import { SkeletonTable } from "@/components/Skeleton";
 
 interface Account { id: string; name: string; display_name: string | null; is_active: boolean; created_at: string; }
 
@@ -37,8 +38,8 @@ export default function ManageAccountsPage() {
     if (!slug) { setError("Enter a valid account name."); return; }
     setSaving(true); setError("");
     const { error: err } = await supabase.from("accounts").insert({ name: slug, display_name: form.display_name.trim() || form.name.trim() });
-    if (err) setError(err.message);
-    else { setForm({ name: "", display_name: "" }); loadData(); }
+    if (err) { setError(err.message); setSaving(false); return; }
+    setForm({ name: "", display_name: "" }); loadData();
     setSaving(false);
   }
 
@@ -68,7 +69,17 @@ export default function ManageAccountsPage() {
     loadData();
   }
 
-  if (authLoading || loading) return <div style={{ minHeight: "100vh" }}><TopNav /></div>;
+  if (authLoading || loading) return (
+    <div style={{ minHeight: "100vh" }}>
+      <TopNav />
+      <div style={{ maxWidth: 800, margin: "0 auto", padding: "2rem" }}>
+        <div style={{ height: 12, width: 60, marginBottom: 14 }} className="skeleton" />
+        <div style={{ height: 24, width: 180, marginBottom: 6 }} className="skeleton" />
+        <div style={{ height: 14, width: 260, marginBottom: 24 }} className="skeleton" />
+        <SkeletonTable rows={3} cols={4} />
+      </div>
+    </div>
+  );
 
   return (
     <div style={{ minHeight: "100vh" }}>
@@ -92,18 +103,25 @@ export default function ManageAccountsPage() {
               <input placeholder="eciton" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={{ width: "100%" }} />
             </div>
           </div>
-          {error && <p style={{ fontSize: 12, color: "var(--text-danger)", margin: "0 0 8px" }}>{error}</p>}
+          {error && <p className="flash-message" style={{ fontSize: 12, color: "var(--text-danger)", margin: "0 0 8px" }}>{error}</p>}
           <button className="primary" onClick={handleCreate} disabled={saving}>{saving ? "Creating…" : "Create account"}</button>
         </div>
 
+        {!accounts.length ? (
+          <div className="empty-state">
+            <div className="empty-icon"><i className="ti ti-building" aria-hidden="true"></i></div>
+            <p className="empty-title">No accounts yet</p>
+            <p>Use the form above to add your first account.</p>
+          </div>
+        ) : (
         <div style={{ background: "var(--surface-1)", borderRadius: 12, overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead><tr style={{ borderBottom: "0.5px solid var(--border)" }}>
               {["Account", "Key", "Status", ""].map((h) => <th key={h} style={{ textAlign: "left", padding: "8px 12px", color: "var(--text-muted)", fontWeight: 500, fontSize: 12 }}>{h}</th>)}
             </tr></thead>
             <tbody>
-              {accounts.map((a) => (
-                <tr key={a.id} style={{ borderBottom: "0.5px solid var(--border)" }}>
+              {accounts.map((a, idx) => (
+                <tr key={a.id} style={{ borderBottom: "0.5px solid var(--border)", opacity: 0, animation: `fadeIn 0.25s ease-out ${Math.min(idx * 0.03, 0.3)}s forwards` }}>
                   <td style={{ padding: "8px 12px", fontWeight: 500, color: "var(--text-primary)" }}>{a.display_name || a.name}</td>
                   <td style={{ padding: "8px 12px", color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 12 }}>{a.name}</td>
                   <td style={{ padding: "8px 12px" }}>
@@ -122,6 +140,7 @@ export default function ManageAccountsPage() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </div>
   );

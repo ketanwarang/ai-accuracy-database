@@ -114,6 +114,13 @@ export default function AccountPage() {
           </div>
         </div>
 
+        {!projects.length ? (
+          <div className="empty-state" style={{ marginTop: 20 }}>
+            <div className="empty-icon"><i className="ti ti-folder" aria-hidden="true"></i></div>
+            <p className="empty-title">No projects yet</p>
+            <p>Add one via Manage projects.</p>
+          </div>
+        ) : (
         <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
           {projects.map((project, idx) => {
             const snap = snapshots[project.id];
@@ -165,6 +172,7 @@ export default function AccountPage() {
             );
           })}
         </div>
+        )}
       </div>
 
       {/* Popover rendered at document level via absolute positioning with scroll offset */}

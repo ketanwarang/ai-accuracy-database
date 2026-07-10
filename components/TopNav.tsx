@@ -12,7 +12,14 @@ export default function TopNav({ accountId }: { accountId?: string }) {
   const { mode, accent, setMode, setAccent } = useTheme();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [themeExpanded, setThemeExpanded] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
+
+  function handleRefresh() {
+    window.dispatchEvent(new CustomEvent("app:refresh"));
+    setRefreshing(true);
+    setTimeout(() => setRefreshing(false), 600);
+  }
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -43,12 +50,12 @@ export default function TopNav({ accountId }: { accountId?: string }) {
 
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <button
-              onClick={() => window.dispatchEvent(new CustomEvent("app:refresh"))}
+              onClick={handleRefresh}
               aria-label="Refresh data"
               title="Refresh data"
-              style={{ padding: "6px 8px", background: "transparent", border: "none", display: "flex", alignItems: "center", gap: 4 }}
+              className="icon-btn"
             >
-              <i className="ti ti-refresh" aria-hidden="true" style={{ fontSize: 17, color: "var(--text-muted)" }}></i>
+              <i className="ti ti-refresh" aria-hidden="true" style={{ fontSize: 17, animation: refreshing ? "spin 0.6s ease" : undefined }}></i>
             </button>
             {user && (
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -95,8 +102,8 @@ export default function TopNav({ accountId }: { accountId?: string }) {
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: "0.5px solid var(--border)" }}>
           <span style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)" }}>Menu</span>
-          <button onClick={() => setDrawerOpen(false)} style={{ background: "transparent", border: "none", padding: 4 }}>
-            <i className="ti ti-x" aria-hidden="true" style={{ fontSize: 18, color: "var(--text-muted)" }}></i>
+          <button onClick={() => setDrawerOpen(false)} className="icon-btn" aria-label="Close menu">
+            <i className="ti ti-x" aria-hidden="true" style={{ fontSize: 18 }}></i>
           </button>
         </div>
 
@@ -190,9 +197,12 @@ function DrawerItem({ icon, label, onClick }: { icon: string; label: string; onC
   return (
     <button onClick={onClick} style={{
       width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "9px 16px",
-      background: "transparent", border: "none", color: "var(--text-primary)", fontSize: 13,
-      textAlign: "left", cursor: "pointer",
-    }}>
+      background: "transparent", border: "none", boxShadow: "none", borderRadius: 0, color: "var(--text-primary)", fontSize: 13,
+      textAlign: "left", cursor: "pointer", transition: "background 0.15s ease",
+    }}
+      onMouseOver={(e) => { e.currentTarget.style.background = "var(--surface-2)"; }}
+      onMouseOut={(e) => { e.currentTarget.style.background = "transparent"; }}
+    >
       <i className={`ti ${icon}`} aria-hidden="true" style={{ fontSize: 16, color: "var(--text-muted)", flexShrink: 0 }}></i>
       {label}
     </button>

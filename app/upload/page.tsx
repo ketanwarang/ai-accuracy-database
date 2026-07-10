@@ -56,6 +56,7 @@ export default function UploadPage() {
   const [savedInfo, setSavedInfo] = useState<{ testDate: string; categoryCount: number } | null>(null);
   const [fileQueue, setFileQueue] = useState<File[]>([]);
   const [queueProgress, setQueueProgress] = useState<{ current: number; total: number; fileName: string } | null>(null);
+  const [dragActive, setDragActive] = useState(false);
 
   useEffect(() => {
     if (authLoading) return;
@@ -467,24 +468,28 @@ export default function UploadPage() {
 
             <div
               onClick={() => selectedProjectId && fileInputRef.current?.click()}
-              onDragOver={(e) => e.preventDefault()}
+              onDragOver={(e) => { e.preventDefault(); if (selectedProjectId) setDragActive(true); }}
+              onDragLeave={() => setDragActive(false)}
               onDrop={(e) => {
                 e.preventDefault();
+                setDragActive(false);
                 if (selectedProjectId) handleFiles(Array.from(e.dataTransfer.files));
               }}
               style={{
-                border: `1.5px dashed var(--border-strong)`,
+                border: `1.5px dashed ${dragActive ? "var(--fill-accent)" : "var(--border-strong)"}`,
                 borderRadius: 12,
                 padding: "3rem 2rem",
                 textAlign: "center",
                 cursor: selectedProjectId ? "pointer" : "not-allowed",
-                background: "var(--surface-1)",
+                background: dragActive ? "var(--bg-accent)" : "var(--surface-1)",
                 opacity: selectedProjectId ? 1 : 0.5,
+                transform: dragActive ? "scale(1.01)" : "scale(1)",
+                transition: "border-color 0.15s ease, background 0.15s ease, transform 0.15s ease",
               }}
             >
-              <i className="ti ti-cloud-upload" aria-hidden="true" style={{ fontSize: 28, color: "var(--text-muted)", display: "block", marginBottom: 10 }}></i>
+              <i className="ti ti-cloud-upload" aria-hidden="true" style={{ fontSize: 28, color: dragActive ? "var(--text-accent)" : "var(--text-muted)", display: "block", marginBottom: 10, transition: "color 0.15s ease" }}></i>
               <p style={{ color: "var(--text-secondary)", fontSize: 15, margin: "0 0 4px" }}>
-                Drop df_out.csv here, or click to browse
+                {dragActive ? "Drop to upload" : "Drop df_out.csv here, or click to browse"}
               </p>
               <p style={{ color: "var(--text-muted)", fontSize: 13, margin: 0 }}>
                 {selectedProjectId ? "Multiple files supported · annotation-level export · max 100MB each" : "Select a project first"}
@@ -500,7 +505,7 @@ export default function UploadPage() {
             </div>
 
             {status === "confirming" && pendingData && (
-              <div style={{ marginTop: 20, padding: 16, borderRadius: 10, background: "var(--bg-warning)", border: "0.5px solid var(--border-warning)" }}>
+              <div style={{ marginTop: 20, padding: 16, borderRadius: 10, background: "var(--bg-warning)", border: "0.5px solid var(--border-warning)", animation: "slideUp 0.25s ease-out" }}>
                 <div style={{ display: "flex", gap: 16, marginBottom: 10, flexWrap: "wrap" }}>
                   <SmallStat label="Rows used" value={pendingData.rows.length.toLocaleString()} />
                   <SmallStat label="Categories" value={String(pendingData.categoryCount)} />
@@ -516,7 +521,7 @@ export default function UploadPage() {
                 <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: "0 0 12px" }}>Categories already in the system for this date will be silently updated.</p>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button className="primary" onClick={handleConfirmSave}>
-                    "Confirm and save"
+                    Confirm and save
                   </button>
                   <button onClick={handleCancelConfirm} style={{ background: "transparent" }}>Cancel</button>
                 </div>
@@ -527,7 +532,7 @@ export default function UploadPage() {
               <StatusBox color="muted" icon="ti-loader-2" spin>{progressMsg || "Parsing CSV…"}</StatusBox>
             )}
             {queueProgress && (
-              <div style={{ marginTop: 20, padding: "12px 16px", borderRadius: 10, background: "var(--surface-1)", border: "0.5px solid var(--border)" }}>
+              <div style={{ marginTop: 20, padding: "12px 16px", borderRadius: 10, background: "var(--surface-1)", border: "0.5px solid var(--border)", animation: "slideUp 0.25s ease-out" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
                   <i className="ti ti-files" aria-hidden="true" style={{ fontSize: 15, color: "var(--text-accent)" }}></i>
                   <p style={{ fontSize: 13, color: "var(--text-primary)", margin: 0, fontWeight: 500 }}>
@@ -561,7 +566,7 @@ export default function UploadPage() {
               <StatusBox color="danger" icon="ti-x">{message}</StatusBox>
             )}
             {savedInfo && status === "idle" && (
-              <div style={{ marginTop: 20, padding: "16px", borderRadius: 10, background: "var(--bg-success)", border: "0.5px solid var(--border-success)" }}>
+              <div style={{ marginTop: 20, padding: "16px", borderRadius: 10, background: "var(--bg-success)", border: "0.5px solid var(--border-success)", animation: "popIn 0.3s ease-out" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                   <i className="ti ti-circle-check" aria-hidden="true" style={{ fontSize: 18, color: "var(--text-success)" }}></i>
                   <p style={{ color: "var(--text-success)", fontSize: 14, fontWeight: 500, margin: 0 }}>Upload complete</p>
@@ -571,7 +576,7 @@ export default function UploadPage() {
                   <SmallStat label="Categories saved" value={String(savedInfo.categoryCount)} />
                 </div>
                 <div style={{ height: 6, borderRadius: 4, background: "var(--border-success)", overflow: "hidden" }}>
-                  <div style={{ height: "100%", borderRadius: 4, background: "var(--fill-success)", width: "100%" }} />
+                  <div style={{ height: "100%", borderRadius: 4, background: "var(--fill-success)", width: "100%", animation: "growWidth 0.6s ease-out" }} />
                 </div>
               </div>
             )}
@@ -629,10 +634,9 @@ function StatusBox({
     success: { bg: "var(--bg-success)", text: "var(--text-success)" },
   }[color];
   return (
-    <div style={{ marginTop: 20, padding: "12px 16px", borderRadius: 10, background: colorMap.bg, display: "flex", alignItems: "center", gap: 8 }}>
+    <div style={{ marginTop: 20, padding: "12px 16px", borderRadius: 10, background: colorMap.bg, display: "flex", alignItems: "center", gap: 8, animation: "slideUp 0.2s ease-out" }}>
       <i className={`ti ${icon}`} aria-hidden="true" style={{ fontSize: 15, color: colorMap.text, animation: spin ? "spin 1s linear infinite" : undefined }}></i>
       <p style={{ color: colorMap.text, fontSize: 13, margin: 0 }}>{children}</p>
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

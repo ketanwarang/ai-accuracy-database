@@ -163,6 +163,45 @@ table tbody tr:hover { background: var(--surface-2); }
 @keyframes spin { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
 @keyframes shimmer { 0% { background-position:-400px 0; } 100% { background-position:400px 0; } }
 @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+@keyframes flashIn { 0% { opacity:0; transform:translateY(-4px); } 8% { opacity:1; transform:translateY(0); } 100% { opacity:1; transform:translateY(0); } }
+@keyframes growWidth { from { width:0%; } to { width:100%; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================ ICON BUTTONS ============================================================ */
+.icon-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; padding: 0; border-radius: var(--radius);
+  background: transparent; border: 0.5px solid transparent; color: var(--text-muted);
+  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+.icon-btn:hover { background: var(--surface-2); color: var(--text-primary); box-shadow: none; }
+.icon-btn:active { transform: scale(0.92); }
+.icon-btn.spinning i { animation: spin 0.6s linear; }
+
+/* ============================================================ EMPTY STATE ============================================================ */
+.empty-state {
+  text-align: center; padding: 3rem 1.5rem;
+  background: var(--surface-1); border: 0.5px solid var(--border); border-radius: var(--radius-lg);
+  animation: fadeIn 0.25s ease-out;
+}
+.empty-state .empty-icon {
+  width: 44px; height: 44px; border-radius: 12px; background: var(--surface-2);
+  display: flex; align-items: center; justify-content: center; margin: 0 auto 14px;
+}
+.empty-state .empty-icon i { font-size: 20px; color: var(--text-muted); }
+.empty-state p { color: var(--text-muted); font-size: 13px; }
+.empty-state p.empty-title { color: var(--text-primary); font-size: 14px; font-weight: 500; margin-bottom: 4px; }
+
+/* Ephemeral inline success/error messages */
+.flash-message { animation: flashIn 0.3s ease-out; }
 
 /* ============================================================ SKELETON ============================================================ */
 .skeleton {

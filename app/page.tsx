@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabaseClient";
 import TopNav from "@/components/TopNav";
 import { useAuth } from "@/lib/auth";
 import { getCached, setCached } from "@/lib/dataCache";
+import { SkeletonCard } from "@/components/Skeleton";
 
 interface Account {
   id: string;
@@ -80,8 +81,11 @@ export default function HomePage() {
     return (
       <div style={{ minHeight: "100vh" }}>
         <TopNav />
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "60vh" }}>
-          <p style={{ color: "var(--text-muted)" }}>Loading…</p>
+        <div style={{ maxWidth: 1180, margin: "0 auto", padding: "2rem" }}>
+          <div style={{ height: 12, width: 90, marginBottom: 24 }} className="skeleton" />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
+            {[1, 2, 3, 4].map((i) => <SkeletonCard key={i} />)}
+          </div>
         </div>
       </div>
     );
@@ -95,9 +99,10 @@ export default function HomePage() {
         <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "0 0 24px" }}>{accounts.length} account{accounts.length !== 1 ? "s" : ""}</p>
 
         {!accounts.length ? (
-          <div style={{ textAlign: "center", padding: "4rem 2rem", background: "var(--surface-1)", borderRadius: 12 }}>
-            <i className="ti ti-building" aria-hidden="true" style={{ fontSize: 32, color: "var(--text-muted)", display: "block", marginBottom: 12 }}></i>
-            <p style={{ color: "var(--text-muted)", fontSize: 14, margin: "0 0 12px" }}>No accounts yet. Add one via Manage accounts.</p>
+          <div className="empty-state">
+            <div className="empty-icon"><i className="ti ti-building" aria-hidden="true"></i></div>
+            <p className="empty-title">No accounts yet</p>
+            <p>Add one via Manage accounts.</p>
           </div>
         ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>

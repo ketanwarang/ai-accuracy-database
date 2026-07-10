@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
 import TopNav from "@/components/TopNav";
 import { useAuth } from "@/lib/auth";
+import { SkeletonTable } from "@/components/Skeleton";
 
 interface Account { id: string; name: string; display_name: string | null; }
 interface Project { id: string; name: string; display_name: string | null; account_id: string; is_active: boolean; }
@@ -71,7 +72,17 @@ export default function ManageProjectsPage() {
 
   const accountMap = Object.fromEntries(accounts.map((a) => [a.id, a.display_name || a.name]));
 
-  if (authLoading || loading) return <div style={{ minHeight: "100vh" }}><TopNav /></div>;
+  if (authLoading || loading) return (
+    <div style={{ minHeight: "100vh" }}>
+      <TopNav />
+      <div style={{ maxWidth: 900, margin: "0 auto", padding: "2rem" }}>
+        <div style={{ height: 12, width: 60, marginBottom: 14 }} className="skeleton" />
+        <div style={{ height: 24, width: 180, marginBottom: 6 }} className="skeleton" />
+        <div style={{ height: 14, width: 280, marginBottom: 24 }} className="skeleton" />
+        <SkeletonTable rows={4} cols={5} />
+      </div>
+    </div>
+  );
 
   return (
     <div style={{ minHeight: "100vh" }}>
@@ -102,18 +113,25 @@ export default function ManageProjectsPage() {
               <input placeholder="sigma" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} style={{ width: "100%" }} />
             </div>
           </div>
-          {error && <p style={{ fontSize: 12, color: "var(--text-danger)", margin: "0 0 8px" }}>{error}</p>}
+          {error && <p className="flash-message" style={{ fontSize: 12, color: "var(--text-danger)", margin: "0 0 8px" }}>{error}</p>}
           <button className="primary" onClick={handleCreate} disabled={saving}>{saving ? "Creating…" : "Create project"}</button>
         </div>
 
+        {!projects.length ? (
+          <div className="empty-state">
+            <div className="empty-icon"><i className="ti ti-folder" aria-hidden="true"></i></div>
+            <p className="empty-title">No projects yet</p>
+            <p>Use the form above to add your first project.</p>
+          </div>
+        ) : (
         <div style={{ background: "var(--surface-1)", borderRadius: 12, overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
             <thead><tr style={{ borderBottom: "0.5px solid var(--border)" }}>
               {["Project", "Key", "Account", "Status", ""].map((h) => <th key={h} style={{ textAlign: "left", padding: "8px 12px", color: "var(--text-muted)", fontWeight: 500, fontSize: 12 }}>{h}</th>)}
             </tr></thead>
             <tbody>
-              {projects.map((p) => (
-                <tr key={p.id} style={{ borderBottom: "0.5px solid var(--border)" }}>
+              {projects.map((p, idx) => (
+                <tr key={p.id} style={{ borderBottom: "0.5px solid var(--border)", opacity: 0, animation: `fadeIn 0.25s ease-out ${Math.min(idx * 0.03, 0.3)}s forwards` }}>
                   <td style={{ padding: "8px 12px", fontWeight: 500, color: "var(--text-primary)" }}>{p.display_name || p.name}</td>
                   <td style={{ padding: "8px 12px", color: "var(--text-muted)", fontFamily: "var(--font-mono)", fontSize: 12 }}>{p.name}</td>
                   <td style={{ padding: "8px 12px", color: "var(--text-muted)" }}>{accountMap[p.account_id] || p.account_id}</td>
@@ -133,6 +151,7 @@ export default function ManageProjectsPage() {
             </tbody>
           </table>
         </div>
+        )}
       </div>
     </div>
   );

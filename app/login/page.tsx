@@ -68,6 +68,7 @@ function LoginPageContent() {
         borderRadius: 16,
         padding: "2rem 1.75rem",
         border: "0.5px solid var(--border)",
+        animation: "popIn 0.3s ease-out",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
           <Logo size={36} />
@@ -75,7 +76,7 @@ function LoginPageContent() {
         </div>
 
         {errorCode && ERROR_MESSAGES[errorCode] && (
-          <div style={{ background: "var(--bg-danger)", border: "0.5px solid var(--border-danger)", borderRadius: 8, padding: "10px 12px", marginBottom: 16 }}>
+          <div className="flash-message" style={{ background: "var(--bg-danger)", border: "0.5px solid var(--border-danger)", borderRadius: 8, padding: "10px 12px", marginBottom: 16 }}>
             <p style={{ fontSize: 13, color: "var(--text-danger)", margin: 0 }}>
               <i className="ti ti-alert-triangle" aria-hidden="true" style={{ marginRight: 6 }}></i>
               {ERROR_MESSAGES[errorCode]}
@@ -118,7 +119,7 @@ function LoginPageContent() {
         </div>
 
         {errorMsg && (
-          <p style={{ fontSize: 12, color: "var(--text-danger)", margin: "0 0 10px" }}>{errorMsg}</p>
+          <p className="flash-message" style={{ fontSize: 12, color: "var(--text-danger)", margin: "0 0 10px" }}>{errorMsg}</p>
         )}
 
         <button

@@ -66,6 +66,7 @@ function ResetPasswordContent() {
         borderRadius: 16,
         padding: "2rem 1.75rem",
         border: "0.5px solid var(--border)",
+        animation: "popIn 0.3s ease-out",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
           <Logo size={36} />
@@ -114,7 +115,7 @@ function ResetPasswordContent() {
             />
 
             {errorMsg && (
-              <p style={{ fontSize: 12, color: "var(--text-danger)", margin: "10px 0" }}>{errorMsg}</p>
+              <p className="flash-message" style={{ fontSize: 12, color: "var(--text-danger)", margin: "10px 0" }}>{errorMsg}</p>
             )}
 
             <button

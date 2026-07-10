@@ -394,10 +394,10 @@ export default function ProjectPage() {
         </div>
 
         {!snapshots.length ? (
-          <div style={{ textAlign: "center", padding: "4rem 2rem", background: "var(--surface-1)", borderRadius: "var(--radius-xl)", border: "0.5px solid var(--border)" }}>
-            <i className="ti ti-cloud-upload" aria-hidden="true" style={{ fontSize: 36, color: "var(--text-muted)", display: "block", marginBottom: 12 }}></i>
-            <p style={{ fontSize: 16, fontWeight: 500, color: "var(--text-primary)", marginBottom: 6 }}>No data uploaded yet</p>
-            <p style={{ fontSize: 14, color: "var(--text-muted)", marginBottom: 20 }}>Upload a df_out CSV to start tracking accuracy for this project.</p>
+          <div className="empty-state">
+            <div className="empty-icon"><i className="ti ti-cloud-upload" aria-hidden="true"></i></div>
+            <p className="empty-title">No data uploaded yet</p>
+            <p style={{ marginBottom: 20 }}>Upload a df_out CSV to start tracking accuracy for this project.</p>
             <button className="primary" onClick={() => router.push("/upload")}><i className="ti ti-upload" aria-hidden="true" style={{ marginRight: 6 }}></i>Upload data</button>
           </div>
         ) : (

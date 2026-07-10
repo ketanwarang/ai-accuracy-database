@@ -49,6 +49,7 @@ export default function ForgotPasswordPage() {
         borderRadius: 16,
         padding: "2rem 1.75rem",
         border: "0.5px solid var(--border)",
+        animation: "popIn 0.3s ease-out",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28 }}>
           <Logo size={36} />
@@ -56,8 +57,8 @@ export default function ForgotPasswordPage() {
         </div>
 
         {status === "sent" ? (
-          <div style={{ textAlign: "center", padding: "1rem 0" }}>
-            <div style={{ width: 48, height: 48, borderRadius: "50%", background: "var(--bg-success)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+          <div style={{ textAlign: "center", padding: "1rem 0", animation: "fadeIn 0.25s ease-out" }}>
+            <div style={{ width: 48, height: 48, borderRadius: "50%", background: "var(--bg-success)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px", animation: "popIn 0.35s ease-out" }}>
               <i className="ti ti-mail" aria-hidden="true" style={{ fontSize: 22, color: "var(--text-success)" }}></i>
             </div>
             <h2 style={{ fontSize: 17, fontWeight: 500, color: "var(--text-primary)", margin: "0 0 8px" }}>Check your email</h2>
@@ -88,7 +89,7 @@ export default function ForgotPasswordPage() {
             />
 
             {errorMsg && (
-              <p style={{ fontSize: 12, color: "var(--text-danger)", margin: "0 0 10px" }}>{errorMsg}</p>
+              <p className="flash-message" style={{ fontSize: 12, color: "var(--text-danger)", margin: "0 0 10px" }}>{errorMsg}</p>
             )}
 
             <button

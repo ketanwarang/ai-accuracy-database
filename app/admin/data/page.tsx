@@ -216,6 +216,7 @@ export default function DataManagementPage() {
       setDeleteMsg(`✓ Deleted ${deletedCount} category-date entries.`);
       clearSelection();
       await loadProjectData(selectedProjectId);
+      setTimeout(() => setDeleteMsg(""), 4000);
     } catch (err: any) {
       setDeleteError(err.message || "Delete failed");
     } finally {
@@ -275,11 +276,19 @@ export default function DataManagementPage() {
 
         {/* Data table */}
         {loading ? (
-          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Loading data…</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {[1, 2, 3].map((i) => <div key={i} className="skeleton" style={{ height: 44, borderRadius: 10 }} />)}
+          </div>
         ) : !selectedProjectId ? (
-          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Select a project to view its data.</p>
+          <div className="empty-state">
+            <div className="empty-icon"><i className="ti ti-folder-search" aria-hidden="true"></i></div>
+            <p>Select a project to view its data.</p>
+          </div>
         ) : !Object.keys(groupedBySnap).length ? (
-          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>No data found for the selected filters.</p>
+          <div className="empty-state">
+            <div className="empty-icon"><i className="ti ti-database-off" aria-hidden="true"></i></div>
+            <p>No data found for the selected filters.</p>
+          </div>
         ) : (
           <>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
@@ -302,18 +311,23 @@ export default function DataManagementPage() {
               </div>
             </div>
 
-            {deleteError && <p style={{ fontSize: 12, color: "var(--text-danger)", marginBottom: 8 }}>{deleteError}</p>}
-            {deleteMsg && !deleting && <p style={{ fontSize: 12, color: "var(--text-success)", marginBottom: 8 }}>{deleteMsg}</p>}
+            {deleteError && <p className="flash-message" style={{ fontSize: 12, color: "var(--text-danger)", marginBottom: 8 }}>{deleteError}</p>}
+            {deleteMsg && !deleting && <p className="flash-message" style={{ fontSize: 12, color: "var(--text-success)", marginBottom: 8 }}>{deleteMsg}</p>}
 
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {Object.entries(groupedBySnap)
                 .sort(([, a], [, b]) => (b[0].test_date > a[0].test_date ? 1 : -1))
-                .map(([snapId, catEntries]) => {
+                .map(([snapId, catEntries], idx) => {
                   const isSnapSelected = selectedSnapIds.has(snapId);
                   const testDate = catEntries[0].test_date;
                   const snap = snapshots.find((s) => s.id === snapId);
                   return (
-                    <div key={snapId} style={{ background: "var(--surface-1)", borderRadius: 10, overflow: "hidden", border: `0.5px solid ${isSnapSelected ? "var(--border-accent)" : "var(--border)"}` }}>
+                    <div key={snapId} style={{
+                      background: "var(--surface-1)", borderRadius: 10, overflow: "hidden",
+                      border: `0.5px solid ${isSnapSelected ? "var(--border-accent)" : "var(--border)"}`,
+                      opacity: 0, animation: `fadeIn 0.25s ease-out ${Math.min(idx * 0.03, 0.3)}s forwards`,
+                      transition: "border-color 0.15s ease",
+                    }}>
                       {/* Snapshot header */}
                       <div
                         onClick={() => toggleSnapSelection(snapId)}
