@@ -114,10 +114,22 @@ export default function HomePage() {
                   background: "var(--surface-1)", border: "0.5px solid var(--border)", borderRadius: 16,
                   padding: "1.5rem", cursor: "pointer", minHeight: 140, display: "flex", flexDirection: "column",
                   opacity: 0, animation: `slideUp 0.3s ease-out ${idx * 0.06}s forwards`,
-                  transition: "box-shadow 0.2s, transform 0.2s, border-color 0.2s",
+                  transition: "box-shadow 0.25s cubic-bezier(0.16,1,0.3,1), transform 0.25s cubic-bezier(0.16,1,0.3,1), border-color 0.25s",
                 }}
-                onMouseOver={(e) => { e.currentTarget.style.boxShadow = "0 6px 18px rgba(0,0,0,0.1)"; e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.borderColor = "var(--border-accent)"; }}
-                onMouseOut={(e) => { e.currentTarget.style.boxShadow = "none"; e.currentTarget.style.transform = "translateY(0)"; e.currentTarget.style.borderColor = "var(--border)"; }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.boxShadow = "0 10px 28px var(--glow-accent), var(--shadow-md)";
+                  e.currentTarget.style.transform = "translateY(-3px) scale(1.01)";
+                  e.currentTarget.style.borderColor = "var(--border-accent)";
+                  const arrow = e.currentTarget.querySelector<HTMLElement>(".card-arrow");
+                  if (arrow) arrow.style.transform = "translateX(3px)";
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.boxShadow = "none";
+                  e.currentTarget.style.transform = "translateY(0) scale(1)";
+                  e.currentTarget.style.borderColor = "var(--border)";
+                  const arrow = e.currentTarget.querySelector<HTMLElement>(".card-arrow");
+                  if (arrow) arrow.style.transform = "translateX(0)";
+                }}
               >
                 <div style={{ width: 42, height: 42, borderRadius: 12, background: "var(--bg-accent)", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 14 }}>
                   <i className="ti ti-building" aria-hidden="true" style={{ fontSize: 20, color: "var(--text-accent)" }}></i>
@@ -131,7 +143,7 @@ export default function HomePage() {
                 <div style={{ flex: 1 }} />
                 <div style={{ display: "flex", alignItems: "center", gap: 4, color: "var(--text-accent)", fontSize: 13 }}>
                   <span>View projects</span>
-                  <i className="ti ti-arrow-right" aria-hidden="true" style={{ fontSize: 14 }}></i>
+                  <i className="ti ti-arrow-right card-arrow" aria-hidden="true" style={{ fontSize: 14, transition: "transform 0.2s ease" }}></i>
                 </div>
               </div>
             ))}

@@ -54,7 +54,7 @@ function LoginPageContent() {
   }
 
   return (
-    <div style={{
+    <div className="auth-page" style={{
       minHeight: "100vh",
       background: "var(--surface-0)",
       display: "flex",
@@ -62,12 +62,12 @@ function LoginPageContent() {
       justifyContent: "center",
       fontFamily: "var(--font-sans)",
     }}>
-      <div style={{
+      <div className="glass-card" style={{
         width: 380,
-        background: "var(--surface-1)",
         borderRadius: 16,
         padding: "2rem 1.75rem",
         border: "0.5px solid var(--border)",
+        boxShadow: "var(--shadow-lg)",
         animation: "popIn 0.3s ease-out",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 28 }}>

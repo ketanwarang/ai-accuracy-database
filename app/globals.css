@@ -123,14 +123,14 @@ button {
   background: var(--surface-1);
   color: var(--text-primary);
   padding: 8px 14px;
-  transition: all 0.15s ease;
+  transition: background 0.18s cubic-bezier(0.16,1,0.3,1), box-shadow 0.18s cubic-bezier(0.16,1,0.3,1), transform 0.15s cubic-bezier(0.16,1,0.3,1), border-color 0.18s ease, color 0.18s ease;
   letter-spacing: -0.01em;
 }
-button:hover { background: var(--surface-2); box-shadow: var(--shadow-sm); }
-button:active { transform: scale(0.98); }
+button:hover { background: var(--surface-2); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+button:active { transform: scale(0.97) translateY(0); }
 button.primary { background: var(--fill-accent); border-color: var(--fill-accent); color: #fff; }
-button.primary:hover { background: var(--fill-accent-hover); box-shadow: 0 4px 12px var(--glow-accent); }
-button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.primary:hover { background: var(--fill-accent-hover); box-shadow: 0 6px 18px var(--glow-accent); transform: translateY(-1px); }
+button:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
 
 /* ============================================================ INPUTS ============================================================ */
 select, input, textarea {
@@ -203,6 +203,49 @@ table tbody tr:hover { background: var(--surface-2); }
 /* Ephemeral inline success/error messages */
 .flash-message { animation: flashIn 0.3s ease-out; }
 
+/* ============================================================ AMBIENT GLOW (auth pages) ============================================================ */
+@keyframes drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(24px, -18px) scale(1.06); }
+}
+.auth-page {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.auth-page::before, .auth-page::after {
+  content: "";
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(90px);
+  z-index: -1;
+  opacity: 0.28;
+  background: var(--fill-accent);
+  animation: drift 14s ease-in-out infinite;
+  pointer-events: none;
+}
+.auth-page::before {
+  width: 420px; height: 420px;
+  top: -140px; left: -120px;
+}
+.auth-page::after {
+  width: 380px; height: 380px;
+  bottom: -160px; right: -110px;
+  animation-delay: -7s;
+}
+[data-mode="dark"] .auth-page::before, [data-mode="dark"] .auth-page::after { opacity: 0.4; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-mode="light"]) .auth-page::before,
+  :root:not([data-mode="light"]) .auth-page::after { opacity: 0.4; }
+}
+
+/* Frosted-glass card surface (used over the ambient glow) */
+.glass-card {
+  background: color-mix(in srgb, var(--surface-1) 82%, transparent);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+}
+
 /* ============================================================ SKELETON ============================================================ */
 .skeleton {
   background: linear-gradient(90deg, var(--surface-2) 25%, var(--border) 50%, var(--surface-2) 75%);
@@ -217,11 +260,11 @@ table tbody tr:hover { background: var(--surface-2); }
   border: 0.5px solid var(--border);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-sm);
-  transition: box-shadow 0.2s, transform 0.2s, border-color 0.2s;
+  transition: box-shadow 0.25s cubic-bezier(0.16,1,0.3,1), transform 0.25s cubic-bezier(0.16,1,0.3,1), border-color 0.25s ease;
 }
 .card:hover { box-shadow: var(--shadow-md); }
 .card-interactive { cursor: pointer; }
-.card-interactive:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+.card-interactive:hover { transform: translateY(-2px) scale(1.008); box-shadow: var(--shadow-lg); }
 
 /* ============================================================ NAV ============================================================ */
 .nav-sticky {
@@ -273,9 +316,9 @@ a:hover { text-decoration: underline; }
   flex-direction: column;
 }
 .project-card:hover {
-  transform: translateY(-3px);
+  transform: translateY(-3px) scale(1.012);
   border-color: var(--status-border, var(--border-accent));
-  box-shadow: 0 8px 24px var(--status-glow, var(--glow-accent)), var(--shadow-sm);
+  box-shadow: 0 10px 28px var(--status-glow, var(--glow-accent)), var(--shadow-sm);
 }
 .project-card button {
   width: 100%;

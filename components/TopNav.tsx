@@ -35,10 +35,7 @@ export default function TopNav({ accountId }: { accountId?: string }) {
 
   return (
     <>
-      <div style={{
-        position: "sticky", top: 0, zIndex: 40,
-        background: "var(--surface-1)", borderBottom: "0.5px solid var(--border)",
-      }}>
+      <div className="nav-sticky">
         <div style={{
           maxWidth: 1180, margin: "0 auto", padding: "0 1.5rem",
           height: 52, display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -85,7 +82,11 @@ export default function TopNav({ accountId }: { accountId?: string }) {
       {drawerOpen && (
         <div
           onClick={() => setDrawerOpen(false)}
-          style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", zIndex: 50, animation: "fadeIn 0.15s ease-out" }}
+          style={{
+            position: "fixed", inset: 0, background: "rgba(0,0,0,0.32)", zIndex: 50,
+            backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
+            animation: "fadeIn 0.2s ease-out",
+          }}
         />
       )}
 
@@ -96,8 +97,9 @@ export default function TopNav({ accountId }: { accountId?: string }) {
           position: "fixed", top: 0, right: 0, bottom: 0, width: 280,
           background: "var(--surface-1)", borderLeft: "0.5px solid var(--border)",
           zIndex: 51, display: "flex", flexDirection: "column",
+          boxShadow: drawerOpen ? "var(--shadow-popover)" : "none",
           transform: drawerOpen ? "translateX(0)" : "translateX(100%)",
-          transition: "transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)",
+          transition: "transform 0.26s cubic-bezier(0.16, 1, 0.3, 1)",
         }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 16px", borderBottom: "0.5px solid var(--border)" }}>
