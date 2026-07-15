@@ -197,12 +197,12 @@ function CategoryPopover({ metrics, testDate, top, left }: { metrics: any[]; tes
   return (
     <div style={{
       position: "absolute", top, left, zIndex: 9999,
-      background: "color-mix(in srgb, var(--surface-popover) 90%, transparent)",
-      backdropFilter: "blur(16px) saturate(180%)", WebkitBackdropFilter: "blur(16px) saturate(180%)",
+      background: "var(--surface-popover)",
       border: "0.5px solid var(--border)",
       borderRadius: 12, padding: "14px 16px", width: 300,
       boxShadow: "var(--shadow-popover)",
       animation: "popIn 0.16s cubic-bezier(0.16,1,0.3,1)", pointerEvents: "none",
+      willChange: "opacity, transform",
     }}>
       <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "0 0 10px" }}>
         Category breakdown · {formatDate(testDate)}
