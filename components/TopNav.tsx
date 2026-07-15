@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useTheme, ACCENT_OPTIONS } from "@/lib/theme";
+import { useViewMode, ViewMode } from "@/lib/viewMode";
 import Logo from "@/components/Logo";
 import { useAuth } from "@/lib/auth";
 
@@ -10,6 +11,7 @@ export default function TopNav({ accountId }: { accountId?: string }) {
   const router = useRouter();
   const { user, isSuperAdmin, isAdmin, signOut } = useAuth();
   const { mode, accent, setMode, setAccent } = useTheme();
+  const { viewMode, setViewMode } = useViewMode();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [themeExpanded, setThemeExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -54,6 +56,7 @@ export default function TopNav({ accountId }: { accountId?: string }) {
             >
               <i className="ti ti-refresh" aria-hidden="true" style={{ fontSize: 17, animation: refreshing ? "spin 0.6s ease" : undefined }}></i>
             </button>
+            {user && <ViewModeSlider viewMode={viewMode} setViewMode={setViewMode} />}
             {user && (
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 {user.avatar_url ? (
@@ -208,5 +211,46 @@ function DrawerItem({ icon, label, onClick }: { icon: string; label: string; onC
       <i className={`ti ${icon}`} aria-hidden="true" style={{ fontSize: 16, color: "var(--text-muted)", flexShrink: 0 }}></i>
       {label}
     </button>
+  );
+}
+
+function ViewModeSlider({ viewMode, setViewMode }: { viewMode: ViewMode; setViewMode: (m: ViewMode) => void }) {
+  const options: { value: ViewMode; label: string }[] = [
+    { value: "raw", label: "Class Name" },
+    { value: "display", label: "Display Name" },
+  ];
+  const activeIndex = viewMode === "raw" ? 0 : 1;
+
+  return (
+    <div
+      title="Switch between raw class names and display names"
+      style={{
+        position: "relative", display: "flex", background: "var(--surface-2)",
+        border: "0.5px solid var(--border-strong)", borderRadius: 20, padding: 2,
+      }}
+    >
+      <div
+        style={{
+          position: "absolute", top: 2, bottom: 2, left: 2,
+          width: "calc(50% - 2px)", borderRadius: 18, background: "var(--fill-accent)",
+          transform: `translateX(${activeIndex * 100}%)`,
+          transition: "transform 0.2s cubic-bezier(0.16,1,0.3,1)",
+        }}
+      />
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          onClick={() => setViewMode(opt.value)}
+          style={{
+            position: "relative", zIndex: 1, minWidth: 86, padding: "5px 10px", fontSize: 12,
+            background: "transparent", border: "none", boxShadow: "none", whiteSpace: "nowrap",
+            color: viewMode === opt.value ? "#fff" : "var(--text-muted)",
+            transition: "color 0.2s ease",
+          }}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
   );
 }

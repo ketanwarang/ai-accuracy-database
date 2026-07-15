@@ -9,9 +9,11 @@ import { SkeletonCard } from "@/components/Skeleton";
 import Breadcrumb from "@/components/Breadcrumb";
 import { formatDate, formatRelativeTime, getHealthStatus, healthColor, pillColor } from "@/lib/format";
 import { getCached, setCached } from "@/lib/dataCache";
+import { useViewMode } from "@/lib/viewMode";
+import ProjectLogo from "@/components/ProjectLogo";
 
 interface Account { id: string; name: string; display_name: string | null; }
-interface Project { id: string; name: string; display_name: string | null; account_id: string; }
+interface Project { id: string; name: string; display_name: string | null; account_id: string; logo_url: string | null; }
 interface Snapshot { id: string; project_id: string; test_date: string; }
 interface CatMetric { snapshot_id: string; category_name: string; gpd_accuracy: number | null; group_accuracy: number | null; class_accuracy: number | null; osa_accuracy: number | null; }
 
@@ -27,7 +29,8 @@ export default function AccountPage() {
   const { accountId } = useParams() as { accountId: string };
   const supabase = createClient();
   const { user, loading: authLoading, isSuperAdmin, isAdmin } = useAuth();
-  const cacheKey = `account:${accountId}`;
+  const { viewMode } = useViewMode();
+  const cacheKey = `account:${accountId}:${viewMode}`;
 
   const [account, setAccount] = useState<Account | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -49,7 +52,7 @@ export default function AccountPage() {
       setLoading(false);
     }
     loadData(!cached);
-  }, [user, authLoading, accountId]);
+  }, [user, authLoading, accountId, viewMode]);
 
   useEffect(() => {
     const handler = () => loadData(false);
@@ -62,7 +65,7 @@ export default function AccountPage() {
     const { data: acc } = await supabase.from("accounts").select("id, name, display_name").eq("id", accountId).maybeSingle();
     setAccount(acc);
 
-    const { data: projs } = await supabase.from("projects").select("id, name, display_name, account_id").eq("account_id", accountId).eq("is_active", true).order("display_name");
+    const { data: projs } = await supabase.from("projects").select("id, name, display_name, account_id, logo_url").eq("account_id", accountId).eq("is_active", true).order("display_name");
     const projsResult = projs || [];
     setProjects(projsResult);
 
@@ -74,7 +77,7 @@ export default function AccountPage() {
     let cMap: Record<string, CatMetric[]> = {};
     const snapIds = (snaps || []).map((s: any) => s.id);
     if (snapIds.length) {
-      const { data: cats } = await supabase.from("category_metrics").select("snapshot_id, category_name, gpd_accuracy, group_accuracy, class_accuracy, osa_accuracy").in("snapshot_id", snapIds);
+      const { data: cats } = await supabase.from("category_metrics").select("snapshot_id, category_name, gpd_accuracy, group_accuracy, class_accuracy, osa_accuracy").in("snapshot_id", snapIds).eq("view_mode", viewMode);
       (cats || []).forEach((c: any) => {
         const pid = Object.keys(snapMap).find((k) => snapMap[k].id === c.snapshot_id);
         if (pid) { if (!cMap[pid]) cMap[pid] = []; cMap[pid].push(c); }
@@ -145,9 +148,7 @@ export default function AccountPage() {
                   style={{ "--status-border": style.border, "--status-glow": style.glow } as React.CSSProperties}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                    <div style={{ width: 36, height: 36, borderRadius: 10, background: style.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <i className={`ti ${style.icon}`} aria-hidden="true" style={{ fontSize: 16, color: style.text }}></i>
-                    </div>
+                    <ProjectLogo logoUrl={project.logo_url} name={project.display_name || project.name} size={36} />
                     <div style={{ minWidth: 0 }}>
                       <p style={{ fontSize: 16, fontWeight: 500, color: "var(--text-primary)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", letterSpacing: "-0.01em" }}>
                         {project.display_name || project.name}

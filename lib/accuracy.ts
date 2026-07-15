@@ -324,3 +324,224 @@ export function filterToLatestDate(allRows: Row[]): Row[] {
   if (!latestDate) return allRows;
   return allRows.filter((r) => normalizeDate(col(r, "date")) === latestDate);
 }
+
+// ============================================================
+// Display Name view (V2.0) — additive only, nothing above this
+// line is modified. See lib/cgc.ts for how the class_name ->
+// display_name mapping is built from a project's CGC sheet.
+//
+// Only class_accuracy, osa_accuracy, and the "class" confusion
+// matrix change between raw and display view — GPD, group,
+// openset, and sticker metrics don't reference class names at
+// all (group has no display-name data in the CGC sheet), so
+// they're computed identically to the raw view either way.
+// ============================================================
+
+export function mapValue(map: Record<string, string>, value: string): string {
+  if (!value) return value;
+  return map[value] ?? value;
+}
+
+// Same shape as perShopAverageAccuracy, but "wrong" is derived fresh from
+// mapped actual/predicted equality instead of reading an existing flag
+// column — this is what lets two raw classes that share a display name
+// stop counting as a mismatch against each other.
+function perShopAverageMappedAccuracy(
+  rows: Row[],
+  actualCol: string,
+  predictedCol: string,
+  classNameMap: Record<string, string>
+): number | null {
+  if (!rows.length) return null;
+  const shops = groupByShop(rows);
+  const shopAccuracies = shops
+    .map((shopRows) => {
+      if (!shopRows.length) return null;
+      const fails = shopRows.filter(
+        (r) => mapValue(classNameMap, col(r, actualCol)) !== mapValue(classNameMap, col(r, predictedCol))
+      ).length;
+      return 1 - fails / shopRows.length;
+    })
+    .filter((v): v is number => v !== null);
+  if (!shopAccuracies.length) return null;
+  return shopAccuracies.reduce((a, b) => a + b, 0) / shopAccuracies.length;
+}
+
+export function computeCategoryMetricsDisplay(
+  allRows: Row[],
+  categoryName: string | null,
+  classNameMap: Record<string, string>
+): CategoryResult | null {
+  const rows = categoryName
+    ? allRows.filter((r) => col(r, "category_name") === categoryName)
+    : allRows;
+  if (!rows.length) return null;
+
+  const skuRows = rows.filter((r) => col(r, "annotation_type") !== "Sticker");
+  const stickerRows = rows.filter((r) => col(r, "annotation_type") === "Sticker");
+  const total = skuRows.length || rows.length;
+
+  // Unchanged from raw — GPD doesn't reference class names.
+  const gpdAcc = perShopAverageAccuracy(skuRows, "gpd");
+
+  const gpdOkRows = skuRows.filter((r) => col(r, "gpd") === "0");
+
+  // Unchanged from raw — the CGC sheet has no group-level display names.
+  const grpAcc = perShopAverageAccuracy(gpdOkRows, "wrong_group");
+
+  // Recomputed — "wrong" now means mapped(actual) != mapped(predicted).
+  const clsAcc = perShopAverageMappedAccuracy(gpdOkRows, "actual_class", "predicted_class", classNameMap);
+
+  // Unchanged from raw — separate openset fields, no class names involved.
+  const osRows = skuRows.filter((r) => col(r, "openset_actual") !== "");
+  const osCorrect = osRows.filter((r) => col(r, "openset_actual") === col(r, "openset_prediction")).length;
+  const osAcc = osRows.length ? osCorrect / osRows.length : null;
+
+  const eligibleRows = skuRows.filter(
+    (r) =>
+      !["", "None", "Shelf", "Sticker"].includes(col(r, "actual_group")) &&
+      !["", "None"].includes(col(r, "actual_class"))
+  );
+
+  // Recomputed — combo correctness uses mapped class equality.
+  const osaAcc = (() => {
+    if (!eligibleRows.length) return null;
+    const shops = groupByShop(eligibleRows);
+    const shopAccs = shops
+      .map((shopRows) => {
+        const combos: Record<string, Row[]> = {};
+        for (const r of shopRows) {
+          const key = `${col(r, "date")}||${col(r, "category_name")}||${mapValue(classNameMap, col(r, "actual_class"))}`;
+          if (!combos[key]) combos[key] = [];
+          combos[key].push(r);
+        }
+        const comboKeys = Object.keys(combos);
+        if (!comboKeys.length) return null;
+        const correct = comboKeys.filter((k) =>
+          combos[k].some(
+            (r) => mapValue(classNameMap, col(r, "actual_class")) === mapValue(classNameMap, col(r, "predicted_class"))
+          )
+        ).length;
+        return correct / comboKeys.length;
+      })
+      .filter((v): v is number => v !== null);
+    return shopAccs.length ? shopAccs.reduce((a, b) => a + b, 0) / shopAccs.length : null;
+  })();
+
+  // Unchanged from raw — sticker fields don't involve class names.
+  let stickerDetAcc: number | null = null;
+  let stickerValAcc: number | null = null;
+  if (stickerRows.length) {
+    const detTotal = stickerRows.filter((r) => col(r, "openset_actual") !== "");
+    const detCorrect = detTotal.filter((r) => col(r, "openset_actual") === col(r, "openset_prediction")).length;
+    stickerDetAcc = detTotal.length ? detCorrect / detTotal.length : null;
+
+    const valRows = stickerRows.filter(
+      (r) => col(r, "sticker_value_actual") !== "" && col(r, "sticker_value_predicted") !== ""
+    );
+    const valCorrect = valRows.filter(
+      (r) => col(r, "sticker_value_actual") === col(r, "sticker_value_predicted")
+    ).length;
+    stickerValAcc = valRows.length ? valCorrect / valRows.length : null;
+  }
+
+  const imageCount = new Set(rows.map((r) => col(r, "image_id")).filter(Boolean)).size;
+
+  return {
+    category_name: categoryName || "ALL",
+    total_annotations: total,
+    image_count: imageCount,
+    gpd_accuracy: gpdAcc,
+    group_accuracy: grpAcc,
+    class_accuracy: clsAcc,
+    openset_accuracy: osAcc,
+    osa_accuracy: osaAcc,
+    sticker_detector_accuracy: stickerDetAcc,
+    sticker_value_accuracy: stickerValAcc,
+  };
+}
+
+export function computeAllCategoriesDisplay(
+  allRows: Row[],
+  classNameMap: Record<string, string>
+): { overall: CategoryResult; categories: CategoryResult[] } {
+  const categories = [...new Set(allRows.map((r) => col(r, "category_name")).filter(Boolean))];
+  const overall = computeCategoryMetricsDisplay(allRows, null, classNameMap)!;
+  const perCategory = categories
+    .map((c) => computeCategoryMetricsDisplay(allRows, c, classNameMap))
+    .filter((c): c is CategoryResult => c !== null);
+  return { overall, categories: perCategory };
+}
+
+export function buildConfusionPairsDisplay(allRows: Row[], classNameMap: Record<string, string>): ConfusionPair[] {
+  // Group matrix is unaffected by the class-name mapping (no group-level
+  // display names exist) — reuse the raw computation's group rows as-is.
+  const groupPairs = buildConfusionPairs(allRows).filter((p) => p.matrix_type === "group");
+
+  // Class matrix: same eligibility filter as buildConfusionPairs, but
+  // actual/predicted values are passed through the mapping before
+  // aggregating, so raw classes sharing a display name merge into one row.
+  const skuRows = allRows.filter(
+    (r) =>
+      col(r, "annotation_type") !== "Sticker" &&
+      !["", "None", "Shelf", "Sticker"].includes(col(r, "actual_group")) &&
+      !["", "None"].includes(col(r, "actual_class"))
+  );
+  const categories = [...new Set(skuRows.map((r) => col(r, "category_name")).filter(Boolean))];
+  const classPairs: ConfusionPair[] = [];
+
+  for (const cat of categories) {
+    const rows = skuRows.filter((r) => col(r, "category_name") === cat);
+    const totals: Record<string, number> = {};
+    const selfCounts: Record<string, number> = {};
+    const allPredictions: Record<string, Record<string, number>> = {};
+
+    for (const r of rows) {
+      const a = mapValue(classNameMap, col(r, "actual_class"));
+      const p = mapValue(classNameMap, col(r, "predicted_class"));
+      if (!a || !p || a === "None") continue;
+      totals[a] = (totals[a] || 0) + 1;
+      if (a === p) selfCounts[a] = (selfCounts[a] || 0) + 1;
+      if (!allPredictions[a]) allPredictions[a] = {};
+      allPredictions[a][p] = (allPredictions[a][p] || 0) + 1;
+    }
+
+    for (const actual of Object.keys(totals)) {
+      const total = totals[actual];
+      const self = selfCounts[actual] || 0;
+      const pct = (self / total) * 100;
+
+      classPairs.push({
+        category_name: cat,
+        matrix_type: "class",
+        actual_value: actual,
+        predicted_value: actual,
+        count: self,
+        self_count: self,
+        total_count: total,
+        accuracy_pct: pct,
+        is_mismatch: false,
+      });
+
+      if (allPredictions[actual]) {
+        for (const pred of Object.keys(allPredictions[actual])) {
+          if (pred !== actual) {
+            classPairs.push({
+              category_name: cat,
+              matrix_type: "class",
+              actual_value: actual,
+              predicted_value: pred,
+              count: allPredictions[actual][pred],
+              self_count: self,
+              total_count: total,
+              accuracy_pct: pct,
+              is_mismatch: true,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return [...groupPairs, ...classPairs].sort((a, b) => a.accuracy_pct - b.accuracy_pct);
+}

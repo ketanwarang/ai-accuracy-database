@@ -1,6 +1,7 @@
 import "./globals.css";
 import { ThemeProvider } from "@/lib/theme";
 import { AuthProvider } from "@/lib/auth";
+import { ViewModeProvider } from "@/lib/viewMode";
 
 export const metadata = {
   title: "AI Accuracy Database",
@@ -32,7 +33,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <ThemeProvider>
           <AuthProvider>
-            {children}
+            <ViewModeProvider>
+              {children}
+            </ViewModeProvider>
           </AuthProvider>
         </ThemeProvider>
       </body>

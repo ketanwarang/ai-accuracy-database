@@ -10,9 +10,13 @@ import { SkeletonTable, SkeletonText } from "@/components/Skeleton";
 import { useAuth } from "@/lib/auth";
 import { formatDate, formatPct, formatNumber, pillColor, getHealthStatus, healthColor } from "@/lib/format";
 import { getCached, setCached } from "@/lib/dataCache";
+import { useViewMode } from "@/lib/viewMode";
+import CgcUploadPanel from "@/components/CgcUploadPanel";
+import ProjectUploadPanel from "@/components/ProjectUploadPanel";
+import ProjectLogoUploader from "@/components/ProjectLogoUploader";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
-interface Project { id: string; name: string; display_name: string | null; account_id: string; }
+interface Project { id: string; name: string; display_name: string | null; account_id: string; logo_url: string | null; }
 interface Snapshot { id: string; test_date: string; row_count: number; file_name: string | null; uploaded_at: string; uploaded_by: string | null; }
 interface CategoryMetric {
   snapshot_id: string; category_name: string; total_annotations: number | null; image_count: number | null;
@@ -52,6 +56,7 @@ export default function ProjectPage() {
   const { accountId, projectName } = useParams() as { accountId: string; projectName: string };
   const supabase = createClient();
   const { user, loading: authLoading } = useAuth();
+  const { viewMode } = useViewMode();
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -82,14 +87,14 @@ export default function ProjectPage() {
   const [showLatestOnly, setShowLatestOnly] = useState(false);
   const [showComments, setShowComments] = useState(false);
 
-  const cacheKey = `project:${accountId}:${projectName}`;
+  const cacheKey = `project:${accountId}:${projectName}:${viewMode}`;
 
   const loadData = useCallback(async (showSkeleton = true) => {
     if (!user) return;
     if (showSkeleton) setLoading(true);
     setError(null);
     try {
-      const { data: proj } = await supabase.from("projects").select("id, name, display_name, account_id").eq("name", projectName).eq("account_id", accountId).maybeSingle();
+      const { data: proj } = await supabase.from("projects").select("id, name, display_name, account_id, logo_url").eq("name", projectName).eq("account_id", accountId).maybeSingle();
       if (!proj) { setLoading(false); return; }
       setProject(proj);
 
@@ -105,7 +110,7 @@ export default function ProjectPage() {
 
       const snapIds = s.map((x) => x.id);
       if (snapIds.length) {
-        const { data: catsData } = await supabase.from("category_metrics").select("*").in("snapshot_id", snapIds);
+        const { data: catsData } = await supabase.from("category_metrics").select("*").in("snapshot_id", snapIds).eq("view_mode", viewMode);
         cats = catsData || [];
         setCategoryMetrics(cats);
 
@@ -117,6 +122,7 @@ export default function ProjectPage() {
             .from("confusion_pairs")
             .select("*")
             .in("snapshot_id", snapIds)
+            .eq("view_mode", viewMode)
             .range(from, from + PAGE - 1);
           if (!page || page.length === 0) break;
           allConf.push(...page);
@@ -149,7 +155,7 @@ export default function ProjectPage() {
     } finally {
       setLoading(false);
     }
-  }, [user, projectName, accountId]);
+  }, [user, projectName, accountId, viewMode]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -166,7 +172,7 @@ export default function ProjectPage() {
       setLoading(false);
     }
     loadData(!cached);
-  }, [user, authLoading, accountId, projectName]);
+  }, [user, authLoading, accountId, projectName, viewMode]);
 
   useEffect(() => {
     const handler = () => loadData(false);
@@ -346,9 +352,17 @@ export default function ProjectPage() {
         <Breadcrumb crumbs={[{ label: "Accounts", href: "/" }, { label: "Projects", href: `/account/${accountId}` }, { label: project.display_name || project.name }]} />
 
         <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 4, flexWrap: "wrap", gap: 12 }}>
-          <div>
-            <h1 style={{ fontSize: 26, letterSpacing: "-0.02em", marginBottom: 4 }}>{project.display_name || project.name}</h1>
-            <p style={{ fontSize: 13, color: "var(--text-muted)" }}>{snapshots.length} snapshot{snapshots.length !== 1 ? "s" : ""} · last 6 months</p>
+          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+            <ProjectLogoUploader
+              projectId={project.id}
+              name={project.display_name || project.name}
+              logoUrl={project.logo_url}
+              onUpdate={(logoUrl) => setProject((p) => (p ? { ...p, logo_url: logoUrl } : p))}
+            />
+            <div>
+              <h1 style={{ fontSize: 26, letterSpacing: "-0.02em", marginBottom: 4 }}>{project.display_name || project.name}</h1>
+              <p style={{ fontSize: 13, color: "var(--text-muted)" }}>{snapshots.length} snapshot{snapshots.length !== 1 ? "s" : ""} · last 6 months</p>
+            </div>
           </div>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             {latestSnap && <span className="pill" style={{ background: statusStyle.bg, color: statusStyle.text }}>
@@ -359,6 +373,8 @@ export default function ProjectPage() {
               <i className="ti ti-message-circle" aria-hidden="true" style={{ fontSize: 14 }}></i>
               Notes {comments.length > 0 && `(${comments.length})`}
             </button>
+            <CgcUploadPanel projectId={project.id} onComplete={() => loadData(false)} />
+            <ProjectUploadPanel projectId={project.id} onComplete={() => loadData(false)} />
           </div>
         </div>
 
@@ -400,6 +416,14 @@ export default function ProjectPage() {
             <p style={{ marginBottom: 20 }}>Upload a df_out CSV to start tracking accuracy for this project.</p>
             <button className="primary" onClick={() => router.push("/upload")}><i className="ti ti-upload" aria-hidden="true" style={{ marginRight: 6 }}></i>Upload data</button>
           </div>
+        ) : viewMode === "display" && !categoryMetrics.length ? (
+          <div className="empty-state">
+            <div className="empty-icon"><i className="ti ti-tag" aria-hidden="true"></i></div>
+            <p className="empty-title">No display-name data available</p>
+            <p style={{ marginBottom: 20 }}>
+              Either no CGC sheet has been uploaded for this project yet, or every snapshot here predates it. Upload a CGC sheet above, or upload new data to see it in Display Name view.
+            </p>
+          </div>
         ) : (
           <div key={tab} style={{ animation: "tabFadeIn 0.2s ease-out" }}>
 
@@ -414,7 +438,14 @@ export default function ProjectPage() {
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
-                  <p style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)", margin: 0 }}>Category metrics</p>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <p style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)", margin: 0 }}>Category metrics</p>
+                    {viewMode === "display" && (
+                      <span className="pill" style={{ background: "var(--bg-accent)", color: "var(--text-accent)" }}>
+                        <i className="ti ti-tag" aria-hidden="true" style={{ fontSize: 11 }}></i> Display names
+                      </span>
+                    )}
+                  </div>
                   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                     <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--text-muted)", cursor: "pointer" }}>
                       <input type="checkbox" checked={showLatestOnly} onChange={(e) => setShowLatestOnly(e.target.checked)} style={{ accentColor: "var(--fill-accent)" }} />

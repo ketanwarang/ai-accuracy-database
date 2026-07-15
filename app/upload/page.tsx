@@ -11,10 +11,10 @@ import {
   Row,
   col,
   computeAllCategories,
-  buildConfusionPairs,
   detectTestDate,
   filterToLatestDate,
 } from "@/lib/accuracy";
+import { saveSnapshotData } from "@/lib/uploadProcessing";
 
 interface Project {
   id: string;
@@ -166,52 +166,15 @@ export default function UploadPage() {
             const testDate = detectTestDate(rows);
             if (!testDate) { reject(new Error("No date column found")); return; }
             const latestRows = filterToLatestDate(rows);
-            const { categories } = computeAllCategories(latestRows);
-            const confusionPairs = buildConfusionPairs(latestRows);
-
-            for (const cat of categories) {
-              let snapshotId: string;
-              const { data: existingSnap } = await supabase
-                .from("snapshots").select("id").eq("project_id", selectedProjectId).eq("test_date", testDate).maybeSingle();
-              if (existingSnap) {
-                snapshotId = existingSnap.id;
-              } else {
-                const { data: snapRow, error: snapErr } = await supabase
-                  .from("snapshots")
-                  .insert({ project_id: selectedProjectId, test_date: testDate, file_name: file.name, row_count: latestRows.length })
-                  .select().single();
-                if (snapErr || !snapRow) { reject(new Error("Failed to create snapshot")); return; }
-                snapshotId = snapRow.id;
-              }
-              // Purge old confusion_pairs for this category
-              const { data: allSnaps } = await supabase.from("snapshots").select("id").eq("project_id", selectedProjectId);
-              const allSnapIds = (allSnaps || []).map((s: any) => s.id);
-              if (allSnapIds.length) {
-                await supabase.from("confusion_pairs").delete().in("snapshot_id", allSnapIds).eq("category_name", cat.category_name);
-              }
-              await supabase.from("category_metrics").delete().eq("snapshot_id", snapshotId).eq("category_name", cat.category_name);
-              await supabase.from("category_metrics").insert({
-                snapshot_id: snapshotId, category_name: cat.category_name,
-                total_annotations: cat.total_annotations, image_count: cat.image_count,
-                gpd_accuracy: cat.gpd_accuracy, group_accuracy: cat.group_accuracy,
-                class_accuracy: cat.class_accuracy, openset_accuracy: cat.openset_accuracy,
-                osa_accuracy: cat.osa_accuracy, sticker_detector_accuracy: cat.sticker_detector_accuracy,
-                sticker_value_accuracy: cat.sticker_value_accuracy,
-              });
-              const catPairs = confusionPairs.filter((p) => p.category_name === cat.category_name);
-              if (catPairs.length) {
-                const batchSize = 500;
-                const rows2 = catPairs.map((p) => ({
-                  snapshot_id: snapshotId, category_name: p.category_name, matrix_type: p.matrix_type,
-                  actual_value: p.actual_value, predicted_value: p.predicted_value, count: p.count,
-                  self_count: p.self_count, total_count: p.total_count, accuracy_pct: p.accuracy_pct, is_mismatch: p.is_mismatch,
-                }));
-                for (let i = 0; i < rows2.length; i += batchSize) {
-                  await supabase.from("confusion_pairs").insert(rows2.slice(i, i + batchSize));
-                }
-              }
-            }
-            resolve({ testDate, categoryCount: categories.length });
+            const uploaderEmail = (await supabase.auth.getUser()).data.user?.email || null;
+            const saved = await saveSnapshotData(supabase, {
+              projectId: selectedProjectId,
+              testDate,
+              fileName: file.name,
+              rows: latestRows,
+              uploaderEmail,
+            });
+            resolve(saved);
           } catch (err: any) { reject(err); }
         },
         error: (err) => reject(new Error("CSV parse error: " + err.message)),
@@ -307,95 +270,18 @@ export default function UploadPage() {
     setStatus("saving");
     try {
       const { rows, fileName, testDate } = pendingData;
+      const uploaderEmail = (await supabase.auth.getUser()).data.user?.email || null;
 
-      setProgressMsg("Computing accuracy metrics…"); setProgressPct(15);
-      const { categories } = computeAllCategories(rows);
-      const confusionPairs = buildConfusionPairs(rows);
+      const saved = await saveSnapshotData(supabase, {
+        projectId: selectedProjectId,
+        testDate: testDate!,
+        fileName,
+        rows,
+        uploaderEmail,
+        onProgress: (msg, pct) => { setProgressMsg(msg); setProgressPct(pct); },
+      });
 
-      setProgressMsg(`Processing ${categories.length} categories…`); setProgressPct(25);
-
-      for (let ci = 0; ci < categories.length; ci++) {
-        const cat = categories[ci];
-        setProgressPct(25 + Math.floor((ci / categories.length) * 65));
-        setProgressMsg(`Saving ${cat.category_name} (${ci + 1}/${categories.length})…`);
-
-        // Find existing snapshot for this project+date
-        let snapshotId: string;
-        const { data: existingSnap } = await supabase
-          .from("snapshots")
-          .select("id")
-          .eq("project_id", selectedProjectId)
-          .eq("test_date", testDate)
-          .maybeSingle();
-
-        if (existingSnap) {
-          snapshotId = existingSnap.id;
-        } else {
-          // Create new snapshot for this project+date
-          const { data: snapRow, error: snapErr } = await supabase
-            .from("snapshots")
-            .insert({ project_id: selectedProjectId, test_date: testDate, file_name: fileName, row_count: rows.length, uploaded_by: supabase.auth.getUser ? (await supabase.auth.getUser()).data.user?.email || null : null })
-            .select().single();
-          if (snapErr || !snapRow) throw new Error("Failed to create snapshot: " + snapErr?.message);
-          snapshotId = snapRow.id;
-        }
-
-        // Purge confusion_pairs for this category from ALL snapshots for this project
-        // (we keep category_metrics for all dates for historical trend tracking,
-        // but confusion_pairs/accuracies/issues are only needed for the latest data)
-        const { data: allSnapsForProject } = await supabase
-          .from("snapshots")
-          .select("id")
-          .eq("project_id", selectedProjectId);
-        const allSnapIds = (allSnapsForProject || []).map((s: any) => s.id);
-        if (allSnapIds.length) {
-          await supabase.from("confusion_pairs")
-            .delete().in("snapshot_id", allSnapIds).eq("category_name", cat.category_name);
-        }
-        // Delete same-date category_metrics for this category only (replace with fresh)
-        await supabase.from("category_metrics")
-          .delete().eq("snapshot_id", snapshotId).eq("category_name", cat.category_name);
-
-        // Insert fresh category metrics
-        const { error: catErr } = await supabase.from("category_metrics").insert({
-          snapshot_id: snapshotId,
-          category_name: cat.category_name,
-          total_annotations: cat.total_annotations,
-          image_count: cat.image_count,
-          gpd_accuracy: cat.gpd_accuracy,
-          group_accuracy: cat.group_accuracy,
-          class_accuracy: cat.class_accuracy,
-          openset_accuracy: cat.openset_accuracy,
-          osa_accuracy: cat.osa_accuracy,
-          sticker_detector_accuracy: cat.sticker_detector_accuracy,
-          sticker_value_accuracy: cat.sticker_value_accuracy,
-        });
-        if (catErr) throw new Error(`Failed to save ${cat.category_name}: ` + catErr.message);
-
-        // Insert confusion pairs for this category
-        const catPairs = confusionPairs.filter((p) => p.category_name === cat.category_name);
-        if (catPairs.length) {
-          const batchSize = 500;
-          const confusionRows = catPairs.map((p) => ({
-            snapshot_id: snapshotId,
-            category_name: p.category_name,
-            matrix_type: p.matrix_type,
-            actual_value: p.actual_value,
-            predicted_value: p.predicted_value,
-            count: p.count,
-            self_count: p.self_count,
-            total_count: p.total_count,
-            accuracy_pct: p.accuracy_pct,
-            is_mismatch: p.is_mismatch,
-          }));
-          for (let i = 0; i < confusionRows.length; i += batchSize) {
-            const { error: confErr } = await supabase.from("confusion_pairs").insert(confusionRows.slice(i, i + batchSize));
-            if (confErr) throw new Error("Failed to save confusion data: " + confErr.message);
-          }
-        }
-      }
-
-      setSavedInfo({ testDate: testDate!, categoryCount: categories.length });
+      setSavedInfo(saved);
       setPendingData(null);
       setStatus("idle");
       setProgressPct(100);
