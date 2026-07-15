@@ -90,7 +90,7 @@ export default function ProjectLogoUploader({
         title="Click to change logo"
         style={{ position: "relative", cursor: busy ? "wait" : "pointer", opacity: busy ? 0.6 : 1 }}
       >
-        <ProjectLogo logoUrl={logoUrl} name={name} size={44} />
+        <ProjectLogo logoUrl={logoUrl} name={name} size={58} />
         {hover && !busy && (
           <div
             style={{

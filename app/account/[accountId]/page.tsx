@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
 import TopNav from "@/components/TopNav";
@@ -39,6 +39,29 @@ export default function AccountPage() {
   const [loading, setLoading] = useState(true);
   const [hoveredProject, setHoveredProject] = useState<string | null>(null);
   const [popoverPos, setPopoverPos] = useState<{ top: number; left: number } | null>(null);
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<"name" | "health">("name");
+
+  const HEALTH_RANK: Record<string, number> = { critical: 0, warning: 1, "no-data": 2, healthy: 3 };
+
+  const visibleProjects = useMemo(() => {
+    let list = projects;
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter((p) => (p.display_name || p.name).toLowerCase().includes(q));
+    }
+    list = list.slice();
+    if (sortBy === "name") {
+      list.sort((a, b) => (a.display_name || a.name).localeCompare(b.display_name || b.name));
+    } else {
+      list.sort((a, b) => {
+        const sa = getHealthStatus((catMetrics[a.id] || []).flatMap((m) => [m.group_accuracy, m.class_accuracy]));
+        const sb = getHealthStatus((catMetrics[b.id] || []).flatMap((m) => [m.group_accuracy, m.class_accuracy]));
+        return HEALTH_RANK[sa] - HEALTH_RANK[sb];
+      });
+    }
+    return list;
+  }, [projects, search, sortBy, catMetrics]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -115,6 +138,21 @@ export default function AccountPage() {
             <h1 style={{ fontSize: 22, fontWeight: 500, color: "var(--text-primary)", margin: 0 }}>{account?.display_name || account?.name}</h1>
             <p style={{ fontSize: 13, color: "var(--text-muted)", margin: "4px 0 0" }}>{projects.length} project{projects.length !== 1 ? "s" : ""}</p>
           </div>
+          {projects.length > 1 && (
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input
+                type="text"
+                placeholder="Search projects…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                style={{ width: 180, fontSize: 13 }}
+              />
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value as "name" | "health")} style={{ fontSize: 13 }}>
+                <option value="name">Sort: Name</option>
+                <option value="health">Sort: Health</option>
+              </select>
+            </div>
+          )}
         </div>
 
         {!projects.length ? (
@@ -123,9 +161,15 @@ export default function AccountPage() {
             <p className="empty-title">No projects yet</p>
             <p>Add one via Manage projects.</p>
           </div>
+        ) : !visibleProjects.length ? (
+          <div className="empty-state" style={{ marginTop: 20 }}>
+            <div className="empty-icon"><i className="ti ti-search" aria-hidden="true"></i></div>
+            <p className="empty-title">No projects match "{search}"</p>
+            <p>Try a different search term.</p>
+          </div>
         ) : (
         <div style={{ marginTop: 20, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))", gap: 12 }}>
-          {projects.map((project, idx) => {
+          {visibleProjects.map((project, idx) => {
             const snap = snapshots[project.id];
             const metrics = catMetrics[project.id];
             const status = getHealthStatus(metrics ? metrics.flatMap((m) => [m.group_accuracy, m.class_accuracy]) : []);
@@ -148,7 +192,7 @@ export default function AccountPage() {
                   style={{ "--status-border": style.border, "--status-glow": style.glow } as React.CSSProperties}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                    <ProjectLogo logoUrl={project.logo_url} name={project.display_name || project.name} size={36} />
+                    <ProjectLogo logoUrl={project.logo_url} name={project.display_name || project.name} size={46} />
                     <div style={{ minWidth: 0 }}>
                       <p style={{ fontSize: 16, fontWeight: 500, color: "var(--text-primary)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", letterSpacing: "-0.01em" }}>
                         {project.display_name || project.name}
@@ -240,7 +284,6 @@ function CardMetrics({ metrics }: { metrics: any[] }) {
     return vals.length ? vals.reduce((a: number, b: number) => a + b, 0) / vals.length : null;
   };
   const fmt = (v: number | null) => v != null ? (v * 100).toFixed(1) + "%" : "N/A";
-  const clr = (v: number | null) => v == null ? "var(--text-muted)" : v >= 0.95 ? "var(--text-success)" : v >= 0.85 ? "var(--text-warning)" : "var(--text-danger)";
 
   const entries: [string, number | null][] = [
     ["Group", avg("group_accuracy")],
@@ -252,12 +295,15 @@ function CardMetrics({ metrics }: { metrics: any[] }) {
 
   return (
     <div style={{ display: "grid", gridTemplateColumns: `repeat(${Math.min(visible.length, 3)}, 1fr)`, gap: 5, marginBottom: 10 }}>
-      {visible.map(([label, val]) => (
-        <div key={label} style={{ background: "var(--surface-0)", borderRadius: 6, padding: "5px 7px" }}>
-          <div style={{ fontSize: 9, color: "var(--text-muted)", letterSpacing: "0.04em", marginBottom: 1 }}>{label}</div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: clr(val) }}>{fmt(val)}</div>
-        </div>
-      ))}
+      {visible.map(([label, val]) => {
+        const c = pillColor(val);
+        return (
+          <div key={label} style={{ background: c.bg, borderRadius: 6, padding: "5px 7px" }}>
+            <div style={{ fontSize: 9, color: c.text, opacity: 0.75, letterSpacing: "0.04em", marginBottom: 1 }}>{label}</div>
+            <div style={{ fontSize: 12, fontWeight: 600, color: c.text }}>{fmt(val)}</div>
+          </div>
+        );
+      })}
     </div>
   );
 }

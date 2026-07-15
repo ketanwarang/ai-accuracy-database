@@ -15,7 +15,9 @@ export default function TopNav({ accountId }: { accountId?: string }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [themeExpanded, setThemeExpanded] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
   function handleRefresh() {
     window.dispatchEvent(new CustomEvent("app:refresh"));
@@ -28,26 +30,30 @@ export default function TopNav({ accountId }: { accountId?: string }) {
       if (drawerRef.current && !drawerRef.current.contains(e.target as Node)) {
         setDrawerOpen(false);
       }
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
     }
-    if (drawerOpen) document.addEventListener("mousedown", handleClick);
+    if (drawerOpen || userMenuOpen) document.addEventListener("mousedown", handleClick);
     return () => document.removeEventListener("mousedown", handleClick);
-  }, [drawerOpen]);
+  }, [drawerOpen, userMenuOpen]);
 
   const isAdminUser = isSuperAdmin || isAdmin(accountId);
 
   return (
     <>
       <div className="nav-sticky">
-        <div style={{
-          maxWidth: 1180, margin: "0 auto", padding: "0 1.5rem",
-          height: 52, display: "flex", alignItems: "center", justifyContent: "space-between",
+        <div className="nav-bar-row" style={{
+          maxWidth: 1180, margin: "0 auto", padding: "8px 1.5rem",
+          minHeight: 52, display: "flex", alignItems: "center", justifyContent: "space-between",
+          flexWrap: "wrap", rowGap: 8, columnGap: 12,
         }}>
           <div onClick={() => router.push("/")} style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
             <Logo size={28} />
-            <span style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)" }}>AI Accuracy Database</span>
+            <span className="nav-brand-text" style={{ fontSize: 14, fontWeight: 500, color: "var(--text-primary)" }}>AI Accuracy Database</span>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <button
               onClick={handleRefresh}
               aria-label="Refresh data"
@@ -58,15 +64,49 @@ export default function TopNav({ accountId }: { accountId?: string }) {
             </button>
             {user && <ViewModeSlider viewMode={viewMode} setViewMode={setViewMode} />}
             {user && (
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {user.avatar_url ? (
-                  <img src={user.avatar_url} alt="" width={28} height={28} style={{ borderRadius: "50%", objectFit: "cover" }} />
-                ) : (
-                  <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--bg-accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 500, color: "var(--text-accent)" }}>
-                    {user.email[0].toUpperCase()}
+              <div ref={userMenuRef} style={{ position: "relative" }}>
+                <button
+                  onClick={() => setUserMenuOpen((v) => !v)}
+                  aria-label="Account menu"
+                  title={user.email}
+                  style={{ padding: 0, border: "none", background: "transparent", borderRadius: "50%", display: "flex" }}
+                >
+                  {user.avatar_url ? (
+                    <img src={user.avatar_url} alt="" width={28} height={28} style={{ borderRadius: "50%", objectFit: "cover" }} />
+                  ) : (
+                    <div style={{ width: 28, height: 28, borderRadius: "50%", background: "var(--bg-accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 500, color: "var(--text-accent)" }}>
+                      {user.email[0].toUpperCase()}
+                    </div>
+                  )}
+                </button>
+
+                {userMenuOpen && (
+                  <div style={{
+                    position: "absolute", top: "calc(100% + 8px)", right: 0, width: 220,
+                    background: "var(--surface-popover)", border: "0.5px solid var(--border)",
+                    borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-popover)",
+                    padding: 6, zIndex: 60, animation: "popIn 0.16s cubic-bezier(0.16,1,0.3,1)",
+                  }}>
+                    <div style={{ padding: "8px 10px 10px", borderBottom: "0.5px solid var(--border)", marginBottom: 6 }}>
+                      <p style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name || user.email.split("@")[0]}</p>
+                      <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.email}</p>
+                    </div>
+                    <DrawerItem icon="ti-key" label="Change password" onClick={() => { router.push("/change-password"); setUserMenuOpen(false); }} />
+                    <button
+                      onClick={signOut}
+                      style={{
+                        width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "9px 10px",
+                        background: "transparent", border: "none", boxShadow: "none", borderRadius: "var(--radius)",
+                        color: "var(--text-danger)", fontSize: 13, textAlign: "left", cursor: "pointer",
+                      }}
+                      onMouseOver={(e) => { e.currentTarget.style.background = "var(--bg-danger)"; }}
+                      onMouseOut={(e) => { e.currentTarget.style.background = "transparent"; }}
+                    >
+                      <i className="ti ti-logout" aria-hidden="true" style={{ fontSize: 16, flexShrink: 0 }}></i>
+                      Sign out
+                    </button>
                   </div>
                 )}
-                <span style={{ fontSize: 13, color: "var(--text-muted)", display: "none" }}>{user.email}</span>
               </div>
             )}
             <button
@@ -127,10 +167,6 @@ export default function TopNav({ accountId }: { accountId?: string }) {
             </DrawerSection>
           )}
 
-          <DrawerSection label="Account">
-            <DrawerItem icon="ti-key" label="Change password" onClick={() => { router.push("/change-password"); setDrawerOpen(false); }} />
-          </DrawerSection>
-
           <DrawerSection label="Appearance">
             <div style={{ padding: "0 12px 8px" }}>
               <p style={{ fontSize: 11, color: "var(--text-muted)", margin: "0 0 6px", letterSpacing: "0.03em" }}>Mode</p>
@@ -159,27 +195,6 @@ export default function TopNav({ accountId }: { accountId?: string }) {
             </div>
           </DrawerSection>
         </div>
-
-        {user && (
-          <div style={{ padding: "12px 16px", borderTop: "0.5px solid var(--border)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-              {user.avatar_url ? (
-                <img src={user.avatar_url} alt="" width={32} height={32} style={{ borderRadius: "50%", objectFit: "cover" }} />
-              ) : (
-                <div style={{ width: 32, height: 32, borderRadius: "50%", background: "var(--bg-accent)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 500, color: "var(--text-accent)" }}>
-                  {user.email[0].toUpperCase()}
-                </div>
-              )}
-              <div style={{ minWidth: 0 }}>
-                <p style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name || user.email.split("@")[0]}</p>
-                <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.email}</p>
-              </div>
-            </div>
-            <button onClick={signOut} style={{ width: "100%", fontSize: 13, color: "var(--text-danger)", background: "transparent", border: "0.5px solid var(--border-danger)", padding: "7px 0" }}>
-              Sign out
-            </button>
-          </div>
-        )}
       </div>
 
       <style>{`

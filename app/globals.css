@@ -149,6 +149,15 @@ table { font-family: inherit; border-collapse: collapse; width: 100%; }
 table tbody tr { transition: background 0.1s; }
 table tbody tr:hover { background: var(--surface-2); }
 
+/* Sticky header for scrollable data tables — thead stays pinned to the
+   top of its scroll container (the .table-scroll wrapper) while rows scroll. */
+.table-scroll { max-height: 520px; overflow-y: auto; }
+.table-scroll thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--surface-1);
+  box-shadow: 0 0.5px 0 var(--border);
+}
+
 /* ============================================================ SCROLLBAR ============================================================ */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -195,6 +204,12 @@ table tbody tr:hover { background: var(--surface-2); }
 .empty-state .empty-icon {
   width: 44px; height: 44px; border-radius: 12px; background: var(--surface-2);
   display: flex; align-items: center; justify-content: center; margin: 0 auto 14px;
+  animation: emptyIconIn 0.4s cubic-bezier(0.16,1,0.3,1);
+}
+@keyframes emptyIconIn {
+  0% { opacity: 0; transform: scale(0.7) translateY(-4px); }
+  70% { opacity: 1; transform: scale(1.06) translateY(0); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
 }
 .empty-state .empty-icon i { font-size: 20px; color: var(--text-muted); }
 .empty-state p { color: var(--text-muted); font-size: 13px; }
@@ -266,6 +281,11 @@ table tbody tr:hover { background: var(--surface-2); }
 .card-interactive { cursor: pointer; }
 .card-interactive:hover { transform: translateY(-2px) scale(1.008); box-shadow: var(--shadow-lg); }
 
+/* ============================================================ NAV RESPONSIVE ============================================================ */
+@media (max-width: 480px) {
+  .nav-brand-text { display: none; }
+}
+
 /* ============================================================ NAV ============================================================ */
 .nav-sticky {
   position: sticky; top: 0; z-index: 40;
@@ -305,6 +325,7 @@ a:hover { text-decoration: underline; }
 
 /* ============================================================ PROJECT CARD ============================================================ */
 .project-card {
+  position: relative;
   background: var(--surface-1);
   border: 0.5px solid var(--border);
   border-radius: var(--radius-xl);
@@ -315,11 +336,25 @@ a:hover { text-decoration: underline; }
   display: flex;
   flex-direction: column;
   will-change: transform;
+  overflow: hidden;
+}
+.project-card::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 3px;
+  background: var(--status-border, var(--border-accent));
+  opacity: 0.55;
+  transition: opacity 0.22s ease, height 0.22s ease;
 }
 .project-card:hover {
   transform: translateY(-3px) scale(1.012);
   border-color: var(--status-border, var(--border-accent));
   box-shadow: 0 8px 20px var(--status-glow, var(--glow-accent)), var(--shadow-sm);
+}
+.project-card:hover::before {
+  opacity: 0.9;
+  height: 4px;
 }
 .project-card button {
   width: 100%;

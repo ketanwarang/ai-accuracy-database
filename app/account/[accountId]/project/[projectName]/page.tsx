@@ -360,19 +360,25 @@ export default function ProjectPage() {
               onUpdate={(logoUrl) => setProject((p) => (p ? { ...p, logo_url: logoUrl } : p))}
             />
             <div>
-              <h1 style={{ fontSize: 26, letterSpacing: "-0.02em", marginBottom: 4 }}>{project.display_name || project.name}</h1>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <h1 style={{ fontSize: 26, letterSpacing: "-0.02em" }}>{project.display_name || project.name}</h1>
+                {latestSnap && <span className="pill" style={{ background: statusStyle.bg, color: statusStyle.text }}>
+                  <i className={`ti ${statusStyle.icon}`} aria-hidden="true" style={{ fontSize: 12 }}></i>
+                  {overallStatus === "healthy" ? "Healthy" : overallStatus === "warning" ? "Needs attention" : "Critical"}
+                </span>}
+              </div>
               <p style={{ fontSize: 13, color: "var(--text-muted)" }}>{snapshots.length} snapshot{snapshots.length !== 1 ? "s" : ""} · last 6 months</p>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            {latestSnap && <span className="pill" style={{ background: statusStyle.bg, color: statusStyle.text }}>
-              <i className={`ti ${statusStyle.icon}`} aria-hidden="true" style={{ fontSize: 12 }}></i>
-              {overallStatus === "healthy" ? "Healthy" : overallStatus === "warning" ? "Needs attention" : "Critical"}
-            </span>}
-            <button onClick={() => setShowComments(!showComments)} style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 5 }}>
+          <div style={{
+            display: "flex", gap: 4, alignItems: "center", padding: 4,
+            background: "var(--surface-2)", border: "0.5px solid var(--border)", borderRadius: "var(--radius-lg)",
+          }}>
+            <button onClick={() => setShowComments(!showComments)} style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 5, background: "transparent", border: "none", boxShadow: "none" }}>
               <i className="ti ti-message-circle" aria-hidden="true" style={{ fontSize: 14 }}></i>
               Notes {comments.length > 0 && `(${comments.length})`}
             </button>
+            <div style={{ width: "0.5px", alignSelf: "stretch", background: "var(--border-strong)" }} />
             <CgcUploadPanel projectId={project.id} onComplete={() => loadData(false)} />
             <ProjectUploadPanel projectId={project.id} onComplete={() => loadData(false)} />
           </div>
@@ -455,7 +461,7 @@ export default function ProjectPage() {
                   </div>
                 </div>
 
-                <div style={{ overflowX: "auto", background: "var(--surface-1)", borderRadius: "var(--radius-lg)", marginBottom: 28, boxShadow: "var(--shadow-sm)" }}>
+                <div className="table-scroll" style={{ overflowX: "auto", background: "var(--surface-1)", borderRadius: "var(--radius-lg)", marginBottom: 28, boxShadow: "var(--shadow-sm)" }}>
                   <table>
                     <thead>
                       <tr style={{ borderBottom: "0.5px solid var(--border)" }}>
@@ -620,7 +626,7 @@ export default function ProjectPage() {
                   </div>
                 )}
 
-                <div style={{ overflowX: "auto", background: "var(--surface-1)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-sm)" }}>
+                <div className="table-scroll" style={{ overflowX: "auto", background: "var(--surface-1)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-sm)" }}>
                   <table>
                     <thead><tr style={{ borderBottom: "0.5px solid var(--border)" }}>
                       {["Category", `Group (${formatDate(compareDateA)})`, `Group (${formatDate(compareDateB)})`, "Δ", `Class (${formatDate(compareDateA)})`, `Class (${formatDate(compareDateB)})`, "Δ"].map((h, i) => (
@@ -681,7 +687,7 @@ export default function ProjectPage() {
                     <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Either all predictions are correct, or re-upload your data to populate this tab.</p>
                   </div>
                 ) : (
-                  <div style={{ overflowX: "auto", background: "var(--surface-1)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-sm)" }}>
+                  <div className="table-scroll" style={{ overflowX: "auto", background: "var(--surface-1)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-sm)" }}>
                     <table>
                       <thead><tr style={{ borderBottom: "0.5px solid var(--border)" }}>
                         {["Category", "Type", "Actual (ground truth)", "Predicted as", "Occurrences", "Acc. %"].map((h) => (
@@ -700,7 +706,12 @@ export default function ProjectPage() {
                               <td style={{ padding: "10px 12px", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={p.actual_value}>{p.actual_value}</td>
                               <td style={{ padding: "10px 12px", color: "var(--text-danger)", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={p.predicted_value}>{p.predicted_value}</td>
                               <td style={{ padding: "10px 12px", fontWeight: 600, color: "var(--text-primary)" }}>{p.count}</td>
-                              <td style={{ padding: "10px 12px", fontWeight: 600, color: tc }}>{p.accuracy_pct.toFixed(2)}%</td>
+                              <td style={{ padding: "10px 12px", minWidth: 60 }}>
+                                <span style={{ fontWeight: 600, color: tc }}>{p.accuracy_pct.toFixed(2)}%</span>
+                                <div style={{ height: 3, borderRadius: 3, background: "var(--border)", overflow: "hidden", marginTop: 4, width: 44 }}>
+                                  <div style={{ height: "100%", borderRadius: 3, background: barFillColor(p.accuracy_pct / 100), width: `${Math.max(0, Math.min(100, p.accuracy_pct))}%`, transition: "width 0.5s ease-out" }} />
+                                </div>
+                              </td>
                             </tr>
                           );
                         })}
@@ -762,7 +773,7 @@ function IssuesTab({ snapId, testDate, issuesFilter, setIssuesFilter, issuesSort
           <p style={{ color: "var(--text-muted)", fontSize: 13 }}>Re-upload your data to populate this section.</p>
         </div>
       ) : (
-        <div style={{ overflowX: "auto", background: "var(--surface-1)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-sm)" }}>
+        <div className="table-scroll" style={{ overflowX: "auto", background: "var(--surface-1)", borderRadius: "var(--radius-lg)", boxShadow: "var(--shadow-sm)" }}>
           <table>
             <thead><tr style={{ borderBottom: "0.5px solid var(--border)" }}>
               {["Category","Type","Actual","Predicted as","Count","Acc. %"].map((h) => <th key={h} style={{ textAlign:"left", padding:"10px 12px", color:"var(--text-muted)", fontWeight:500, fontSize:12 }}>{h}</th>)}
@@ -786,9 +797,23 @@ function IssuesTab({ snapId, testDate, issuesFilter, setIssuesFilter, issuesSort
   );
 }
 
+function barFillColor(val: number | null): string {
+  if (val == null) return "var(--border)";
+  return val >= 0.95 ? "var(--fill-success)" : val >= 0.85 ? "var(--fill-warning)" : "var(--fill-danger)";
+}
+
 function Pill({ val }: { val: number | null }) {
   const c = pillColor(val);
-  return <span className="pill" style={{ background: c.bg, color: c.text, fontSize: 12 }}>{formatPct(val, 2)}</span>;
+  return (
+    <div style={{ minWidth: 60 }}>
+      <span className="pill" style={{ background: c.bg, color: c.text, fontSize: 12 }}>{formatPct(val, 2)}</span>
+      {val != null && (
+        <div style={{ height: 3, borderRadius: 3, background: "var(--border)", overflow: "hidden", marginTop: 4, width: 44 }}>
+          <div style={{ height: "100%", borderRadius: 3, background: barFillColor(val), width: `${Math.max(0, Math.min(100, val * 100))}%`, transition: "width 0.5s ease-out" }} />
+        </div>
+      )}
+    </div>
+  );
 }
 function Delta({ val }: { val: number | null }) {
   if (val == null) return <span style={{ color: "var(--text-muted)", fontSize: 12 }}>—</span>;
