@@ -175,6 +175,11 @@ table tbody tr:hover { background: var(--surface-2); }
 @keyframes flashIn { 0% { opacity:0; transform:translateY(-4px); } 8% { opacity:1; transform:translateY(0); } 100% { opacity:1; transform:translateY(0); } }
 @keyframes growWidth { from { width:0%; } to { width:100%; } }
 
+/* Accuracy mini-bars animate transform (not width) — cheaper to composite and
+   avoids layout thrashing. --bar-scale is set per-instance to the metric's
+   0-1 value; the bar sweeps in from 0 on mount instead of snapping to size. */
+@keyframes barGrowIn { from { transform: scaleX(0); } to { transform: scaleX(var(--bar-scale, 1)); } }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;
@@ -355,6 +360,15 @@ a:hover { text-decoration: underline; }
 .project-card:hover::before {
   opacity: 0.9;
   height: 4px;
+}
+/* Draws the eye to projects that actually need attention; silent otherwise. */
+.project-card--critical::before {
+  animation: pulse 2.2s ease-in-out infinite;
+}
+
+/* Same intent, applied to the "Critical" status pill on the project detail page. */
+.status-pulse {
+  animation: pulse 2.2s ease-in-out infinite;
 }
 .project-card button {
   width: 100%;

@@ -14,7 +14,7 @@ import { useViewMode } from "@/lib/viewMode";
 import CgcUploadPanel from "@/components/CgcUploadPanel";
 import ProjectUploadPanel from "@/components/ProjectUploadPanel";
 import ProjectLogoUploader from "@/components/ProjectLogoUploader";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
 interface Project { id: string; name: string; display_name: string | null; account_id: string; logo_url: string | null; }
 interface Snapshot { id: string; test_date: string; row_count: number; file_name: string | null; uploaded_at: string; uploaded_by: string | null; }
@@ -362,7 +362,7 @@ export default function ProjectPage() {
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                 <h1 style={{ fontSize: 26, letterSpacing: "-0.02em" }}>{project.display_name || project.name}</h1>
-                {latestSnap && <span className="pill" style={{ background: statusStyle.bg, color: statusStyle.text }}>
+                {latestSnap && <span className={`pill${overallStatus === "critical" ? " status-pulse" : ""}`} style={{ background: statusStyle.bg, color: statusStyle.text }}>
                   <i className={`ti ${statusStyle.icon}`} aria-hidden="true" style={{ fontSize: 12 }}></i>
                   {overallStatus === "healthy" ? "Healthy" : overallStatus === "warning" ? "Needs attention" : "Critical"}
                 </span>}
@@ -438,9 +438,9 @@ export default function ProjectPage() {
               <ErrorBoundary label="Category metrics failed to load" onRetry={loadData}>
                 <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
                   <InfoChip icon="ti-calendar" label="Latest date" value={formatDate(overallLatestDate)} />
-                  <InfoChip icon="ti-photo" label="Annotations" value={formatNumber(latestSnap?.row_count)} />
-                  <InfoChip icon="ti-category" label="Categories" value={String(latestCats.length)} />
-                  <InfoChip icon="ti-images" label="Images" value={formatNumber(latestCats.reduce((a, c) => a + (c.image_count || 0), 0))} />
+                  <InfoChip icon="ti-photo" label="Annotations" value={formatNumber(latestSnap?.row_count)} numericValue={latestSnap?.row_count ?? null} />
+                  <InfoChip icon="ti-category" label="Categories" value={String(latestCats.length)} numericValue={latestCats.length} />
+                  <InfoChip icon="ti-images" label="Images" value={formatNumber(latestCats.reduce((a, c) => a + (c.image_count || 0), 0))} numericValue={latestCats.reduce((a, c) => a + (c.image_count || 0), 0)} />
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
@@ -471,8 +471,8 @@ export default function ProjectPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {latestCats.slice().sort((a, b) => a.category_name.localeCompare(b.category_name)).map((c) => (
-                        <tr key={c.category_name} style={{ borderBottom: "0.5px solid var(--border)" }}>
+                      {latestCats.slice().sort((a, b) => a.category_name.localeCompare(b.category_name)).map((c, i) => (
+                        <tr key={c.category_name} style={{ borderBottom: "0.5px solid var(--border)", opacity: 0, animation: `fadeIn 0.25s ease-out ${Math.min(i * 0.03, 0.3)}s forwards` }}>
                           <td style={{ padding: "10px 12px", fontWeight: 500, color: "var(--text-primary)", whiteSpace: "nowrap" }}>{c.category_name}</td>
                           <td style={{ padding: "10px 12px", color: "var(--text-muted)", fontSize: 12, whiteSpace: "nowrap" }}>{formatDate(perCategoryLatest[c.category_name]?.test_date)}</td>
                           {([c.gpd_accuracy, c.group_accuracy, c.class_accuracy, c.openset_accuracy, c.osa_accuracy, c.sticker_detector_accuracy] as (number | null)[]).map((v, i) => (
@@ -532,10 +532,9 @@ export default function ProjectPage() {
                     <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
                       {paginatedAccuracies.map((p, i) => {
                         const pct = p.accuracy_pct;
-                        const bc = pct >= 95 ? "var(--fill-success)" : pct >= 85 ? "var(--fill-warning)" : "var(--fill-danger)";
                         const tc = pct >= 95 ? "var(--text-success)" : pct >= 85 ? "var(--text-warning)" : "var(--text-danger)";
                         return (
-                          <div key={i} style={{ background: "var(--surface-1)", borderRadius: "var(--radius)", padding: "10px 14px", boxShadow: "var(--shadow-sm)" }}>
+                          <div key={i} style={{ background: "var(--surface-1)", borderRadius: "var(--radius)", padding: "10px 14px", boxShadow: "var(--shadow-sm)", opacity: 0, animation: `fadeIn 0.25s ease-out ${Math.min(i * 0.02, 0.3)}s forwards` }}>
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6, gap: 12 }}>
                               <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                                 <span className="pill" style={{ background: "var(--bg-accent)", color: "var(--text-accent)", fontSize: 10 }}>{p.matrix_type}</span>
@@ -546,9 +545,7 @@ export default function ProjectPage() {
                                 <span style={{ fontSize: 11, color: "var(--text-muted)" }}>{p.self_count}/{p.total_count}</span>
                               </div>
                             </div>
-                            <div style={{ height: 4, borderRadius: 4, background: "var(--border)", overflow: "hidden" }}>
-                              <div style={{ height: "100%", borderRadius: 4, background: bc, width: `${pct}%`, transition: "width 0.5s ease-out" }} />
-                            </div>
+                            <AccuracyBar value={pct / 100} height={4} />
                           </div>
                         );
                       })}
@@ -592,16 +589,24 @@ export default function ProjectPage() {
                 </div>
                 <div style={{ background: "var(--surface-1)", borderRadius: "var(--radius-lg)", padding: 16, boxShadow: "var(--shadow-sm)" }}>
                   <ResponsiveContainer width="100%" height={340}>
-                    <LineChart data={historicalData}>
+                    <AreaChart data={historicalData}>
+                      <defs>
+                        {chartMetrics.map((k) => (
+                          <linearGradient key={k} id={`grad-${k}`} x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor={CHART_COLORS[k]} stopOpacity={0.25} />
+                            <stop offset="95%" stopColor={CHART_COLORS[k]} stopOpacity={0} />
+                          </linearGradient>
+                        ))}
+                      </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                       <XAxis dataKey="date" stroke="var(--text-muted)" fontSize={12} tickFormatter={(d) => formatDate(d)} />
                       <YAxis stroke="var(--text-muted)" fontSize={12} domain={([dataMin, dataMax]: [number, number]) => [Math.max(0, Math.floor(dataMin - 5)), Math.min(100, Math.ceil(dataMax + 5))]} />
                       <Tooltip contentStyle={{ background: "var(--surface-popover)", border: "0.5px solid var(--border)", borderRadius: 8, fontSize: 13, boxShadow: "var(--shadow-md)" }} labelFormatter={(d) => formatDate(d as string)} />
                       <Legend />
                       {chartMetrics.map((k) => (
-                        <Line key={k} type="monotone" dataKey={k} name={METRICS.find((m) => m.key === k)?.label || k} stroke={CHART_COLORS[k]} strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                        <Area key={k} type="monotone" dataKey={k} name={METRICS.find((m) => m.key === k)?.label || k} stroke={CHART_COLORS[k]} strokeWidth={2} fill={`url(#grad-${k})`} dot={{ r: 3 }} connectNulls />
                       ))}
-                    </LineChart>
+                    </AreaChart>
                   </ResponsiveContainer>
                 </div>
               </ErrorBoundary>
@@ -634,12 +639,12 @@ export default function ProjectPage() {
                       ))}
                     </tr></thead>
                     <tbody>
-                      {compareCats.map((cat) => {
+                      {compareCats.map((cat, i) => {
                         const a = catsA.find((c) => c.category_name === cat), b = catsB.find((c) => c.category_name === cat);
                         const gd = a?.group_accuracy != null && b?.group_accuracy != null ? b.group_accuracy - a.group_accuracy : null;
                         const cd = a?.class_accuracy != null && b?.class_accuracy != null ? b.class_accuracy - a.class_accuracy : null;
                         return (
-                          <tr key={cat} style={{ borderBottom: "0.5px solid var(--border)" }}>
+                          <tr key={cat} style={{ borderBottom: "0.5px solid var(--border)", opacity: 0, animation: `fadeIn 0.25s ease-out ${Math.min(i * 0.03, 0.3)}s forwards` }}>
                             <td style={{ padding: "10px 12px", fontWeight: 500, color: "var(--text-primary)" }}>{cat}</td>
                             <td style={{ padding: "10px 12px" }}><Pill val={a?.group_accuracy ?? null} /></td>
                             <td style={{ padding: "10px 12px" }}><Pill val={b?.group_accuracy ?? null} /></td>
@@ -698,7 +703,7 @@ export default function ProjectPage() {
                         {mistakesData.slice(0, 200).map((p, i) => {
                           const tc = p.accuracy_pct >= 85 ? "var(--text-warning)" : "var(--text-danger)";
                           return (
-                            <tr key={i} style={{ borderBottom: "0.5px solid var(--border)" }}>
+                            <tr key={i} style={{ borderBottom: "0.5px solid var(--border)", opacity: 0, animation: `fadeIn 0.25s ease-out ${Math.min(i * 0.02, 0.3)}s forwards` }}>
                               <td style={{ padding: "10px 12px", color: "var(--text-muted)", fontSize: 12 }}>{p.category_name}</td>
                               <td style={{ padding: "10px 12px" }}>
                                 <span className="pill" style={{ background: "var(--bg-accent)", color: "var(--text-accent)", fontSize: 10 }}>{p.matrix_type}</span>
@@ -708,9 +713,7 @@ export default function ProjectPage() {
                               <td style={{ padding: "10px 12px", fontWeight: 600, color: "var(--text-primary)" }}>{p.count}</td>
                               <td style={{ padding: "10px 12px", minWidth: 60 }}>
                                 <span style={{ fontWeight: 600, color: tc }}>{p.accuracy_pct.toFixed(2)}%</span>
-                                <div style={{ height: 3, borderRadius: 3, background: "var(--border)", overflow: "hidden", marginTop: 4, width: 44 }}>
-                                  <div style={{ height: "100%", borderRadius: 3, background: barFillColor(p.accuracy_pct / 100), width: `${Math.max(0, Math.min(100, p.accuracy_pct))}%`, transition: "width 0.5s ease-out" }} />
-                                </div>
+                                <div style={{ marginTop: 4, width: 44 }}><AccuracyBar value={p.accuracy_pct / 100} /></div>
                               </td>
                             </tr>
                           );
@@ -780,7 +783,7 @@ function IssuesTab({ snapId, testDate, issuesFilter, setIssuesFilter, issuesSort
             </tr></thead>
             <tbody>
               {filtered.map((p: any, i: number) => (
-                <tr key={i} style={{ borderBottom: "0.5px solid var(--border)" }}>
+                <tr key={i} style={{ borderBottom: "0.5px solid var(--border)", opacity: 0, animation: `fadeIn 0.25s ease-out ${Math.min(i * 0.03, 0.3)}s forwards` }}>
                   <td style={{ padding:"10px 12px", color:"var(--text-muted)", fontSize:12 }}>{p.category_name}</td>
                   <td style={{ padding:"10px 12px" }}><span className="pill" style={{ background:"var(--bg-accent)", color:"var(--text-accent)", fontSize:10 }}>{p.matrix_type}</span></td>
                   <td style={{ padding:"10px 12px", maxWidth:220, overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }} title={p.actual_value}>{p.actual_value}</td>
@@ -802,16 +805,33 @@ function barFillColor(val: number | null): string {
   return val >= 0.95 ? "var(--fill-success)" : val >= 0.85 ? "var(--fill-warning)" : "var(--fill-danger)";
 }
 
+// Shared accuracy mini-bar: animates in via transform (scaleX), not width, so
+// it composites on the GPU instead of forcing layout — then sweeps from 0 to
+// its value on mount for a bit of life without being distracting. Respects
+// prefers-reduced-motion globally (snaps straight to final state).
+function AccuracyBar({ value, height = 3, width }: { value: number; height?: number; width?: number | string }) {
+  const clamped = Math.max(0, Math.min(1, value));
+  return (
+    <div style={{ height, borderRadius: height, background: "var(--border)", overflow: "hidden", width: width ?? "100%" }}>
+      <div
+        style={{
+          height: "100%", width: "100%", borderRadius: height,
+          background: barFillColor(clamped),
+          transform: `scaleX(${clamped})`, transformOrigin: "left",
+          animation: "barGrowIn 0.6s cubic-bezier(0.16,1,0.3,1)",
+          ["--bar-scale" as any]: clamped,
+        }}
+      />
+    </div>
+  );
+}
+
 function Pill({ val }: { val: number | null }) {
   const c = pillColor(val);
   return (
     <div style={{ minWidth: 60 }}>
       <span className="pill" style={{ background: c.bg, color: c.text, fontSize: 12 }}>{formatPct(val, 2)}</span>
-      {val != null && (
-        <div style={{ height: 3, borderRadius: 3, background: "var(--border)", overflow: "hidden", marginTop: 4, width: 44 }}>
-          <div style={{ height: "100%", borderRadius: 3, background: barFillColor(val), width: `${Math.max(0, Math.min(100, val * 100))}%`, transition: "width 0.5s ease-out" }} />
-        </div>
-      )}
+      {val != null && <div style={{ marginTop: 4, width: 44 }}><AccuracyBar value={val} /></div>}
     </div>
   );
 }
@@ -821,13 +841,38 @@ function Delta({ val }: { val: number | null }) {
   const color = p > 0.05 ? "var(--text-success)" : p < -0.05 ? "var(--text-danger)" : "var(--text-muted)";
   return <span style={{ color, fontSize: 12, fontWeight: 600 }}>{p > 0 ? "+" : ""}{p.toFixed(2)}%</span>;
 }
-function InfoChip({ icon, label, value }: { icon: string; label: string; value: string }) {
+// Counts up from 0 to `target` on mount/change — signals "this is live data
+// that just loaded", not decorative. Skips straight to the final value under
+// prefers-reduced-motion.
+function useCountUp(target: number | null | undefined, duration = 700): number {
+  const [display, setDisplay] = useState(target ?? 0);
+  useEffect(() => {
+    if (target == null || isNaN(target)) return;
+    const reduceMotion = typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion) { setDisplay(target); return; }
+    let raf: number;
+    const start = performance.now();
+    function tick(now: number) {
+      const t = Math.min(1, (now - start) / duration);
+      const eased = 1 - Math.pow(1 - t, 3);
+      setDisplay(Math.round(target * eased));
+      if (t < 1) raf = requestAnimationFrame(tick);
+    }
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, duration]);
+  return display;
+}
+
+function InfoChip({ icon, label, value, numericValue }: { icon: string; label: string; value: string; numericValue?: number | null }) {
+  const animated = useCountUp(numericValue);
+  const display = numericValue != null ? animated.toLocaleString() : value;
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, background: "var(--surface-1)", borderRadius: "var(--radius)", padding: "8px 14px", boxShadow: "var(--shadow-sm)" }}>
       <i className={`ti ${icon}`} aria-hidden="true" style={{ fontSize: 15, color: "var(--text-muted)" }}></i>
       <div>
         <div style={{ fontSize: 10, color: "var(--text-muted)", letterSpacing: "0.03em", textTransform: "uppercase" }}>{label}</div>
-        <div style={{ fontSize: 14, color: "var(--text-primary)", fontWeight: 600 }}>{value}</div>
+        <div style={{ fontSize: 14, color: "var(--text-primary)", fontWeight: 600 }}>{display}</div>
       </div>
     </div>
   );

@@ -188,7 +188,7 @@ export default function AccountPage() {
               >
                 <div
                   onClick={() => router.push(`/account/${accountId}/project/${project.name}`)}
-                  className="project-card"
+                  className={`project-card${status === "critical" ? " project-card--critical" : ""}`}
                   style={{ "--status-border": style.border, "--status-glow": style.glow } as React.CSSProperties}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
