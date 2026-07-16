@@ -56,25 +56,22 @@ export default function CgcUploadPanel({ projectId, onComplete }: { projectId: s
     setCgcStatus({ classCount: count, uploadedAt: latest?.created_at || "" });
   }
 
-  async function purgeDisplayViewData() {
-    const { data: snaps } = await supabase.from("snapshots").select("id").eq("project_id", projectId);
-    const snapIds = (snaps || []).map((s: any) => s.id);
-    if (snapIds.length) {
-      await supabase.from("category_metrics").delete().in("snapshot_id", snapIds).eq("view_mode", "display");
-      await supabase.from("confusion_pairs").delete().in("snapshot_id", snapIds).eq("view_mode", "display");
-    }
-  }
-
   async function handleDelete() {
-    if (!confirm("Delete the CGC sheet for this project? Display Name view won't be available again until a new sheet is uploaded.")) return;
+    if (
+      !confirm(
+        "Delete the CGC sheet for this project? Already-computed Display Name view data stays intact and keeps showing as-is — this only stops new uploads from computing Display Name metrics until a new CGC sheet is added."
+      )
+    )
+      return;
     setStatus("working");
     setProgressMsg("Deleting CGC mapping…");
-    setProgressPct(30);
+    setProgressPct(50);
     try {
+      // Only the mapping itself is removed. category_metrics/confusion_pairs
+      // rows with view_mode='display' are left untouched, so existing graphs
+      // and calculations are unaffected by this — they only get recomputed
+      // (or added to, for future uploads) once a CGC sheet exists again.
       await supabase.from("project_cgc_mappings").delete().eq("project_id", projectId);
-      setProgressMsg("Clearing display-name metrics…");
-      setProgressPct(70);
-      await purgeDisplayViewData();
       setCgcStatus(null);
       setResult(null);
       setStatus("idle");

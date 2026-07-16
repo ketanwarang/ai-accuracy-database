@@ -1,38 +1,73 @@
 // Core accuracy computation logic for df_out CSV exports.
 //
-// IMPORTANT — calculation methodology (verified against ParallelDots'
-// own reference report on 2026-06-30):
+// IMPORTANT — calculation methodology (revised 2026-07-16, verified
+// metric-by-metric against a real df_out export):
 //
-// 1. GPD accuracy = per-shop accuracy averaged across shops (not pooled).
-//    Formula per shop: 1 - (rows where gpd=='1') / (total SKU rows in shop)
+// 1. GPD accuracy = simple POOLED accuracy across all SKU rows (every row
+//    counts equally, NOT per-shop averaged — corrected from an earlier
+//    per-shop-average implementation).
+//    Formula: count(SKU rows where gpd=='0') / count(all SKU rows)
 //
-// 2. Group/Class accuracy = per-shop accuracy averaged across shops,
-//    computed ONLY over rows where gpd=='0' (i.e. GPD succeeded —
-//    you can't meaningfully score group/class correctness on a row
-//    where detection itself failed). Uses the wrong_group/wrong_class
-//    flags directly (authoritative — handles edge cases like
-//    actual_group=="None" correctly, since those rows always have gpd=='1'
-//    and get excluded by the gate).
-//    Formula per shop: 1 - (gpd==0 rows where wrong_group=='1') / (gpd==0 row count)
+// 2. Group accuracy = simple POOLED accuracy across all SKU rows, NOT
+//    gpd-gated. Excludes rows where actual_group or predicted_group is
+//    None/Sticker/Shelf (any casing) — not meaningful group-level comparisons.
+//    Formula: count(eligible rows where wrong_group=='0')/count(eligible rows)
 //
-// 3. Openset accuracy = simple POOLED accuracy across all SKU rows
-//    (NOT per-shop averaged, NOT gpd-gated). Matches reference exactly.
+//    Class accuracy = same shape as Group accuracy — simple POOLED accuracy,
+//    NOT gpd-gated, excluding rows where actual_class or predicted_class is
+//    None/Sticker/Shelf (any casing).
+//    Formula: count(eligible rows where wrong_class=='0')/count(eligible rows)
 //
-// 4. OSA (On Shelf Availability): per-shop avg of (class-shop combos with
-//    at least one correct actual_class==predicted_class) / (total combos).
+// 3. Openset accuracy = simple POOLED accuracy across all SKU rows (NOT
+//    per-shop averaged, NOT gpd-gated). Excludes rows where any of
+//    actual_group/predicted_group/actual_class/predicted_class is
+//    None/Sticker/Shelf (any casing).
+//
+// 4. OSA (On Shelf Availability): POOLED across all shops (not per-shop
+//    averaged) — count(correct (shop,date,category,actual_class) combos)
+//    / count(all such combos), where a combo is correct if at least one
+//    row in it has actual_class==predicted_class.
+//
+// 5. Sticker detector accuracy = simple POOLED accuracy over Sticker-type
+//    annotations only, using the gpd column (same shape as GPD accuracy).
+//    Formula: count(Sticker rows where gpd=='0') / count(Sticker rows)
+//
+// 6. Sticker value accuracy = pooled accuracy over Sticker rows where both
+//    sticker_value_actual and sticker_value_predicted are present.
 //
 // If a file has no "Shop ID" column, all formulas degrade gracefully to
 // pooled (single "shop") since there's nothing to average across.
 
 export type Row = Record<string, string>;
 
+// col() is called an enormous number of times per upload (every metric pass
+// touches most columns of most rows), and re-deriving the normalized
+// header->key lookup from scratch on every single call (Object.keys() +
+// per-key string normalization) was the dominant cost. Since the same Row
+// object is queried repeatedly across passes, cache each row's normalized
+// key map the first time it's built and reuse it on every later call —
+// same lookup semantics (first raw key matching a normalized name wins),
+// just computed once per row instead of once per (row, call) pair.
+const normalizedKeyCache = new WeakMap<Row, Map<string, string>>();
+
+function getNormalizedKeyMap(row: Row): Map<string, string> {
+  let map = normalizedKeyCache.get(row);
+  if (!map) {
+    map = new Map();
+    for (const k of Object.keys(row)) {
+      const norm = k.trim().toLowerCase().replace(/[_\s]/g, "");
+      if (!map.has(norm)) map.set(norm, k);
+    }
+    normalizedKeyCache.set(row, map);
+  }
+  return map;
+}
+
 export function col(row: Row, ...names: string[]): string {
-  const keys = Object.keys(row);
+  const keyMap = getNormalizedKeyMap(row);
   for (const n of names) {
     const target = n.toLowerCase().replace(/[_\s]/g, "");
-    const found = keys.find(
-      (k) => k.trim().toLowerCase().replace(/[_\s]/g, "") === target
-    );
+    const found = keyMap.get(target);
     if (found && row[found] !== undefined) return (row[found] || "").trim();
   }
   return "";
@@ -72,43 +107,67 @@ function avgNumericCol(rows: Row[], colName: string): number | null {
   return vals.reduce((a, b) => a + b, 0) / vals.length;
 }
 
+// Groups rows by category_name in a single pass, preserving first-occurrence
+// order (matches the [...new Set(...)] ordering the old per-category
+// re-filtering relied on) — avoids re-scanning the full row array once per
+// category.
+function groupByCategoryName(rows: Row[]): Map<string, Row[]> {
+  const map = new Map<string, Row[]>();
+  for (const r of rows) {
+    const c = col(r, "category_name");
+    if (!c) continue;
+    const bucket = map.get(c);
+    if (bucket) bucket.push(r);
+    else map.set(c, [r]);
+  }
+  return map;
+}
+
 function getShopKey(row: Row): string {
   const shopId = col(row, "shop_id", "shopid");
   const shopName = col(row, "shop_name", "shopname");
   return shopId || shopName || "__no_shop__";
 }
 
-function groupByShop(rows: Row[]): Row[][] {
-  const map: Record<string, Row[]> = {};
-  for (const r of rows) {
-    const key = getShopKey(r);
-    if (!map[key]) map[key] = [];
-    map[key].push(r);
-  }
-  return Object.values(map);
+// True for "None"/"Sticker"/"Shelf" (any casing) — these aren't meaningful
+// group-level values and are excluded from Group/Class/Openset accuracy's
+// eligible sets.
+function isExcludedGroupValue(value: string): boolean {
+  const v = value.trim().toLowerCase();
+  return v === "none" || v === "sticker" || v === "shelf";
 }
 
-// Per-shop average of a boolean-flag-derived accuracy.
+// A row is excluded from Openset accuracy if any of its raw group/class
+// fields is None/Sticker (any casing) — same exclusion values as Group and
+// Class accuracy, just checked across all four fields at once.
+function isExcludedForOpenset(r: Row): boolean {
+  return (
+    isExcludedGroupValue(col(r, "actual_group")) ||
+    isExcludedGroupValue(col(r, "predicted_group")) ||
+    isExcludedGroupValue(col(r, "actual_class")) ||
+    isExcludedGroupValue(col(r, "predicted_class"))
+  );
+}
+
+// Pooled accuracy: every row counts equally, no per-shop averaging.
 // failFlag: column name whose value '1' marks a failure for that row.
-// rows passed in should already be the eligible/gated rowset.
-function perShopAverageAccuracy(rows: Row[], failFlagCol: string): number | null {
+function pooledFlagAccuracy(rows: Row[], failFlagCol: string): number | null {
   if (!rows.length) return null;
-  const shops = groupByShop(rows);
-  const shopAccuracies = shops
-    .map((shopRows) => {
-      if (!shopRows.length) return null;
-      const fails = shopRows.filter((r) => col(r, failFlagCol) === "1").length;
-      return 1 - fails / shopRows.length;
-    })
-    .filter((v): v is number => v !== null);
-  if (!shopAccuracies.length) return null;
-  return shopAccuracies.reduce((a, b) => a + b, 0) / shopAccuracies.length;
+  const fails = rows.filter((r) => col(r, failFlagCol) === "1").length;
+  return 1 - fails / rows.length;
 }
 
 export function computeCategoryMetrics(allRows: Row[], categoryName: string | null): CategoryResult | null {
   const rows = categoryName
     ? allRows.filter((r) => col(r, "category_name") === categoryName)
     : allRows;
+  return computeMetricsForRows(rows, categoryName);
+}
+
+// Core computation, assuming `rows` is already the correct (category-filtered
+// or "ALL") subset — split out so computeAllCategories can group once instead
+// of re-filtering allRows from scratch for every category.
+function computeMetricsForRows(rows: Row[], categoryName: string | null): CategoryResult | null {
   if (!rows.length) return null;
 
   const skuRows = rows.filter((r) => col(r, "annotation_type") !== "Sticker");
@@ -116,17 +175,30 @@ export function computeCategoryMetrics(allRows: Row[], categoryName: string | nu
 
   const total = skuRows.length || rows.length;
 
-  // GPD accuracy: per-shop average, ungated (GPD measures itself).
-  const gpdAcc = perShopAverageAccuracy(skuRows, "gpd");
+  // GPD accuracy: pooled across all SKU rows (every row counts equally),
+  // ungated (GPD measures itself). = count(gpd==0) / count(all SKU rows).
+  const gpdAcc = pooledFlagAccuracy(skuRows, "gpd");
 
-  // Group/Class accuracy: per-shop average, GATED to rows where gpd=='0'
-  // (GPD succeeded) — can't score group/class on a detection failure.
-  const gpdOkRows = skuRows.filter((r) => col(r, "gpd") === "0");
-  const grpAcc = perShopAverageAccuracy(gpdOkRows, "wrong_group");
-  const clsAcc = perShopAverageAccuracy(gpdOkRows, "wrong_class");
+  // Group accuracy: pooled across all SKU rows (every row counts equally),
+  // NOT gpd-gated. Excludes rows where actual_group or predicted_group is
+  // None/Sticker/Shelf (any casing) — not meaningful group-level comparisons.
+  // = count(eligible rows where wrong_group==0) / count(eligible rows)
+  const groupEligibleRows = skuRows.filter(
+    (r) => !isExcludedGroupValue(col(r, "actual_group")) && !isExcludedGroupValue(col(r, "predicted_group"))
+  );
+  const grpAcc = pooledFlagAccuracy(groupEligibleRows, "wrong_group");
 
-  // Openset accuracy: simple POOLED accuracy (not gated, not per-shop averaged).
-  const osRows = skuRows.filter((r) => col(r, "openset_actual") !== "");
+  // Class accuracy: same shape as Group accuracy — pooled, ungated,
+  // excluding rows where actual_class or predicted_class is None/Sticker.
+  const classEligibleRows = skuRows.filter(
+    (r) => !isExcludedGroupValue(col(r, "actual_class")) && !isExcludedGroupValue(col(r, "predicted_class"))
+  );
+  const clsAcc = pooledFlagAccuracy(classEligibleRows, "wrong_class");
+
+  // Openset accuracy: simple POOLED accuracy (not gated, not per-shop
+  // averaged). Excludes rows where any of actual_group/predicted_group/
+  // actual_class/predicted_class is None/Sticker.
+  const osRows = skuRows.filter((r) => col(r, "openset_actual") !== "" && !isExcludedForOpenset(r));
   const osCorrect = osRows.filter((r) => col(r, "openset_actual") === col(r, "openset_prediction")).length;
   const osAcc = osRows.length ? osCorrect / osRows.length : null;
 
@@ -137,38 +209,33 @@ export function computeCategoryMetrics(allRows: Row[], categoryName: string | nu
       !["", "None"].includes(col(r, "actual_class"))
   );
 
-  // OSA (On Shelf Availability):
-  // For each (shop, date, category, actual_class) combination:
-  //   OSA = 100 if at least one annotation has actual_class == predicted_class, else 0.
-  // Per-shop OSA = count(combos where OSA=100) / count(all combos) * 100.
-  // Overall OSA = average of per-shop OSA values.
-  // Only uses eligible rows (same filter as group/class accuracy).
+  // OSA (On Shelf Availability), POOLED across all shops (not per-shop
+  // averaged): combos are keyed by (shop, date, category, actual_class); a
+  // combo is correct if at least one row in it has actual_class==predicted_class.
+  // OSA = count(correct combos) / count(all combos), across the whole eligible set.
   const osaAcc = (() => {
     if (!eligibleRows.length) return null;
-    const shops = groupByShop(eligibleRows);
-    const shopAccs = shops.map((shopRows) => {
-      // Group by (date, category, actual_class)
-      const combos: Record<string, Row[]> = {};
-      for (const r of shopRows) {
-        const key = `${col(r, "date")}||${col(r, "category_name")}||${col(r, "actual_class")}`;
-        if (!combos[key]) combos[key] = [];
-        combos[key].push(r);
-      }
-      const comboKeys = Object.keys(combos);
-      if (!comboKeys.length) return null;
-      const correct = comboKeys.filter((k) =>
-        combos[k].some((r) => col(r, "actual_class") === col(r, "predicted_class"))
-      ).length;
-      return correct / comboKeys.length;
-    }).filter((v): v is number => v !== null);
-    return shopAccs.length ? shopAccs.reduce((a, b) => a + b, 0) / shopAccs.length : null;
+    const combos: Record<string, Row[]> = {};
+    for (const r of eligibleRows) {
+      const key = `${getShopKey(r)}||${col(r, "date")}||${col(r, "category_name")}||${col(r, "actual_class")}`;
+      if (!combos[key]) combos[key] = [];
+      combos[key].push(r);
+    }
+    const comboKeys = Object.keys(combos);
+    if (!comboKeys.length) return null;
+    const correct = comboKeys.filter((k) =>
+      combos[k].some((r) => col(r, "actual_class") === col(r, "predicted_class"))
+    ).length;
+    return correct / comboKeys.length;
   })();
 
+  // Sticker detector accuracy: pooled, over Sticker-type annotations only,
+  // using the gpd column (same shape as GPD accuracy, just scoped to stickers).
   let stickerDetAcc: number | null = null;
   let stickerValAcc: number | null = null;
   if (stickerRows.length) {
-    const detTotal = stickerRows.filter((r) => col(r, "openset_actual") !== "");
-    const detCorrect = detTotal.filter((r) => col(r, "openset_actual") === col(r, "openset_prediction")).length;
+    const detTotal = stickerRows.filter((r) => col(r, "gpd") !== "");
+    const detCorrect = detTotal.filter((r) => col(r, "gpd") === "0").length;
     stickerDetAcc = detTotal.length ? detCorrect / detTotal.length : null;
 
     const valRows = stickerRows.filter(
@@ -197,10 +264,10 @@ export function computeCategoryMetrics(allRows: Row[], categoryName: string | nu
 }
 
 export function computeAllCategories(allRows: Row[]): { overall: CategoryResult; categories: CategoryResult[] } {
-  const categories = [...new Set(allRows.map((r) => col(r, "category_name")).filter(Boolean))];
-  const overall = computeCategoryMetrics(allRows, null)!;
-  const perCategory = categories
-    .map((c) => computeCategoryMetrics(allRows, c))
+  const overall = computeMetricsForRows(allRows, null)!;
+  const byCategory = groupByCategoryName(allRows);
+  const perCategory = [...byCategory.entries()]
+    .map(([c, rows]) => computeMetricsForRows(rows, c))
     .filter((c): c is CategoryResult => c !== null);
   return { overall, categories: perCategory };
 }
@@ -215,7 +282,8 @@ export function buildConfusionPairs(allRows: Row[]): ConfusionPair[] {
       !["", "None", "Shelf", "Sticker"].includes(col(r, "actual_group")) &&
       !["", "None"].includes(col(r, "actual_class"))
   );
-  const categories = [...new Set(skuRows.map((r) => col(r, "category_name")).filter(Boolean))];
+  const byCategory = groupByCategoryName(skuRows);
+  const categories = [...byCategory.keys()];
   const pairs: ConfusionPair[] = [];
 
   for (const matrixType of ["class", "group"] as const) {
@@ -223,7 +291,7 @@ export function buildConfusionPairs(allRows: Row[]): ConfusionPair[] {
     const pCol = matrixType === "class" ? "predicted_class" : "predicted_group";
 
     for (const cat of categories) {
-      const rows = skuRows.filter((r) => col(r, "category_name") === cat);
+      const rows = byCategory.get(cat)!;
 
       const totals: Record<string, number> = {};
       const selfCounts: Record<string, number> = {};
@@ -342,29 +410,21 @@ export function mapValue(map: Record<string, string>, value: string): string {
   return map[value] ?? value;
 }
 
-// Same shape as perShopAverageAccuracy, but "wrong" is derived fresh from
-// mapped actual/predicted equality instead of reading an existing flag
-// column — this is what lets two raw classes that share a display name
-// stop counting as a mismatch against each other.
-function perShopAverageMappedAccuracy(
+// Same shape as pooledFlagAccuracy, but "wrong" is derived fresh from mapped
+// actual/predicted equality instead of reading an existing flag column —
+// this is what lets two raw classes that share a display name stop counting
+// as a mismatch against each other.
+function pooledMappedAccuracy(
   rows: Row[],
   actualCol: string,
   predictedCol: string,
   classNameMap: Record<string, string>
 ): number | null {
   if (!rows.length) return null;
-  const shops = groupByShop(rows);
-  const shopAccuracies = shops
-    .map((shopRows) => {
-      if (!shopRows.length) return null;
-      const fails = shopRows.filter(
-        (r) => mapValue(classNameMap, col(r, actualCol)) !== mapValue(classNameMap, col(r, predictedCol))
-      ).length;
-      return 1 - fails / shopRows.length;
-    })
-    .filter((v): v is number => v !== null);
-  if (!shopAccuracies.length) return null;
-  return shopAccuracies.reduce((a, b) => a + b, 0) / shopAccuracies.length;
+  const fails = rows.filter(
+    (r) => mapValue(classNameMap, col(r, actualCol)) !== mapValue(classNameMap, col(r, predictedCol))
+  ).length;
+  return 1 - fails / rows.length;
 }
 
 export function computeCategoryMetricsDisplay(
@@ -375,6 +435,17 @@ export function computeCategoryMetricsDisplay(
   const rows = categoryName
     ? allRows.filter((r) => col(r, "category_name") === categoryName)
     : allRows;
+  return computeMetricsForRowsDisplay(rows, categoryName, classNameMap);
+}
+
+// Core computation, assuming `rows` is already the correct subset — split
+// out so computeAllCategoriesDisplay can group once instead of re-filtering
+// allRows from scratch for every category.
+function computeMetricsForRowsDisplay(
+  rows: Row[],
+  categoryName: string | null,
+  classNameMap: Record<string, string>
+): CategoryResult | null {
   if (!rows.length) return null;
 
   const skuRows = rows.filter((r) => col(r, "annotation_type") !== "Sticker");
@@ -382,18 +453,23 @@ export function computeCategoryMetricsDisplay(
   const total = skuRows.length || rows.length;
 
   // Unchanged from raw — GPD doesn't reference class names.
-  const gpdAcc = perShopAverageAccuracy(skuRows, "gpd");
-
-  const gpdOkRows = skuRows.filter((r) => col(r, "gpd") === "0");
+  const gpdAcc = pooledFlagAccuracy(skuRows, "gpd");
 
   // Unchanged from raw — the CGC sheet has no group-level display names.
-  const grpAcc = perShopAverageAccuracy(gpdOkRows, "wrong_group");
+  const groupEligibleRows = skuRows.filter(
+    (r) => !isExcludedGroupValue(col(r, "actual_group")) && !isExcludedGroupValue(col(r, "predicted_group"))
+  );
+  const grpAcc = pooledFlagAccuracy(groupEligibleRows, "wrong_group");
 
-  // Recomputed — "wrong" now means mapped(actual) != mapped(predicted).
-  const clsAcc = perShopAverageMappedAccuracy(gpdOkRows, "actual_class", "predicted_class", classNameMap);
+  // Same eligibility filter as raw class accuracy; "wrong" is redefined as
+  // mapped(actual) != mapped(predicted) instead of the wrong_class flag.
+  const classEligibleRows = skuRows.filter(
+    (r) => !isExcludedGroupValue(col(r, "actual_class")) && !isExcludedGroupValue(col(r, "predicted_class"))
+  );
+  const clsAcc = pooledMappedAccuracy(classEligibleRows, "actual_class", "predicted_class", classNameMap);
 
   // Unchanged from raw — separate openset fields, no class names involved.
-  const osRows = skuRows.filter((r) => col(r, "openset_actual") !== "");
+  const osRows = skuRows.filter((r) => col(r, "openset_actual") !== "" && !isExcludedForOpenset(r));
   const osCorrect = osRows.filter((r) => col(r, "openset_actual") === col(r, "openset_prediction")).length;
   const osAcc = osRows.length ? osCorrect / osRows.length : null;
 
@@ -403,37 +479,34 @@ export function computeCategoryMetricsDisplay(
       !["", "None"].includes(col(r, "actual_class"))
   );
 
-  // Recomputed — combo correctness uses mapped class equality.
+  // Recomputed — combo correctness uses mapped class equality. POOLED
+  // across all shops (not per-shop averaged), same as raw OSA.
   const osaAcc = (() => {
     if (!eligibleRows.length) return null;
-    const shops = groupByShop(eligibleRows);
-    const shopAccs = shops
-      .map((shopRows) => {
-        const combos: Record<string, Row[]> = {};
-        for (const r of shopRows) {
-          const key = `${col(r, "date")}||${col(r, "category_name")}||${mapValue(classNameMap, col(r, "actual_class"))}`;
-          if (!combos[key]) combos[key] = [];
-          combos[key].push(r);
-        }
-        const comboKeys = Object.keys(combos);
-        if (!comboKeys.length) return null;
-        const correct = comboKeys.filter((k) =>
-          combos[k].some(
-            (r) => mapValue(classNameMap, col(r, "actual_class")) === mapValue(classNameMap, col(r, "predicted_class"))
-          )
-        ).length;
-        return correct / comboKeys.length;
-      })
-      .filter((v): v is number => v !== null);
-    return shopAccs.length ? shopAccs.reduce((a, b) => a + b, 0) / shopAccs.length : null;
+    const combos: Record<string, Row[]> = {};
+    for (const r of eligibleRows) {
+      const key = `${getShopKey(r)}||${col(r, "date")}||${col(r, "category_name")}||${mapValue(classNameMap, col(r, "actual_class"))}`;
+      if (!combos[key]) combos[key] = [];
+      combos[key].push(r);
+    }
+    const comboKeys = Object.keys(combos);
+    if (!comboKeys.length) return null;
+    const correct = comboKeys.filter((k) =>
+      combos[k].some(
+        (r) => mapValue(classNameMap, col(r, "actual_class")) === mapValue(classNameMap, col(r, "predicted_class"))
+      )
+    ).length;
+    return correct / comboKeys.length;
   })();
 
   // Unchanged from raw — sticker fields don't involve class names.
+  // Sticker detector accuracy: pooled, over Sticker-type annotations only,
+  // using the gpd column (same shape as GPD accuracy, just scoped to stickers).
   let stickerDetAcc: number | null = null;
   let stickerValAcc: number | null = null;
   if (stickerRows.length) {
-    const detTotal = stickerRows.filter((r) => col(r, "openset_actual") !== "");
-    const detCorrect = detTotal.filter((r) => col(r, "openset_actual") === col(r, "openset_prediction")).length;
+    const detTotal = stickerRows.filter((r) => col(r, "gpd") !== "");
+    const detCorrect = detTotal.filter((r) => col(r, "gpd") === "0").length;
     stickerDetAcc = detTotal.length ? detCorrect / detTotal.length : null;
 
     const valRows = stickerRows.filter(
@@ -465,10 +538,10 @@ export function computeAllCategoriesDisplay(
   allRows: Row[],
   classNameMap: Record<string, string>
 ): { overall: CategoryResult; categories: CategoryResult[] } {
-  const categories = [...new Set(allRows.map((r) => col(r, "category_name")).filter(Boolean))];
-  const overall = computeCategoryMetricsDisplay(allRows, null, classNameMap)!;
-  const perCategory = categories
-    .map((c) => computeCategoryMetricsDisplay(allRows, c, classNameMap))
+  const overall = computeMetricsForRowsDisplay(allRows, null, classNameMap)!;
+  const byCategory = groupByCategoryName(allRows);
+  const perCategory = [...byCategory.entries()]
+    .map(([c, rows]) => computeMetricsForRowsDisplay(rows, c, classNameMap))
     .filter((c): c is CategoryResult => c !== null);
   return { overall, categories: perCategory };
 }
@@ -487,11 +560,12 @@ export function buildConfusionPairsDisplay(allRows: Row[], classNameMap: Record<
       !["", "None", "Shelf", "Sticker"].includes(col(r, "actual_group")) &&
       !["", "None"].includes(col(r, "actual_class"))
   );
-  const categories = [...new Set(skuRows.map((r) => col(r, "category_name")).filter(Boolean))];
+  const byCategory = groupByCategoryName(skuRows);
+  const categories = [...byCategory.keys()];
   const classPairs: ConfusionPair[] = [];
 
   for (const cat of categories) {
-    const rows = skuRows.filter((r) => col(r, "category_name") === cat);
+    const rows = byCategory.get(cat)!;
     const totals: Record<string, number> = {};
     const selfCounts: Record<string, number> = {};
     const allPredictions: Record<string, Record<string, number>> = {};

@@ -38,7 +38,7 @@ export default function UploadPage() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [recentUploads, setRecentUploads] = useState<RecentUpload[]>([]);
-  const [status, setStatus] = useState<"idle" | "parsing" | "confirming" | "saving" | "error" | "validation-error">("idle");
+  const [status, setStatus] = useState<"idle" | "parsing" | "confirming" | "confirming-no-cgc" | "saving" | "error" | "validation-error">("idle");
   const [message, setMessage] = useState("");
   const [progressMsg, setProgressMsg] = useState("");
   const [progressPct, setProgressPct] = useState(0);
@@ -57,6 +57,15 @@ export default function UploadPage() {
   const [fileQueue, setFileQueue] = useState<File[]>([]);
   const [queueProgress, setQueueProgress] = useState<{ current: number; total: number; fileName: string } | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [queuedFilesPendingCgc, setQueuedFilesPendingCgc] = useState<File[] | null>(null);
+
+  async function projectHasCgcSheet(projectId: string): Promise<boolean> {
+    const { count } = await supabase
+      .from("project_cgc_mappings")
+      .select("*", { count: "exact", head: true })
+      .eq("project_id", projectId);
+    return !!count;
+  }
 
   useEffect(() => {
     if (authLoading) return;
@@ -122,6 +131,12 @@ export default function UploadPage() {
       return;
     }
     setFileQueue(validFiles);
+    const hasCgc = await projectHasCgcSheet(selectedProjectId);
+    if (!hasCgc) {
+      setQueuedFilesPendingCgc(validFiles);
+      setStatus("confirming-no-cgc");
+      return;
+    }
     // Start processing the queue
     await processFileQueue(validFiles);
   }
@@ -306,8 +321,19 @@ export default function UploadPage() {
 
   function handleCancelConfirm() {
     setPendingData(null);
+    setQueuedFilesPendingCgc(null);
     setStatus("idle");
     if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  async function handleProceedNoCgc() {
+    if (queuedFilesPendingCgc) {
+      const files = queuedFilesPendingCgc;
+      setQueuedFilesPendingCgc(null);
+      await processFileQueue(files);
+      return;
+    }
+    await handleConfirmSave();
   }
 
   return (
@@ -406,9 +432,32 @@ export default function UploadPage() {
                 )}
                 <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: "0 0 12px" }}>Categories already in the system for this date will be silently updated.</p>
                 <div style={{ display: "flex", gap: 8 }}>
-                  <button className="primary" onClick={handleConfirmSave}>
+                  <button
+                    className="primary"
+                    onClick={async () => {
+                      const hasCgc = await projectHasCgcSheet(selectedProjectId);
+                      if (!hasCgc) setStatus("confirming-no-cgc");
+                      else await handleConfirmSave();
+                    }}
+                  >
                     Confirm and save
                   </button>
+                  <button onClick={handleCancelConfirm} style={{ background: "transparent" }}>Cancel</button>
+                </div>
+              </div>
+            )}
+
+            {status === "confirming-no-cgc" && (
+              <div style={{ marginTop: 20, padding: 16, borderRadius: 10, background: "var(--bg-warning)", border: "0.5px solid var(--border-warning)", animation: "slideUp 0.25s ease-out" }}>
+                <p style={{ fontSize: 13, fontWeight: 500, color: "var(--text-primary)", margin: "0 0 8px", display: "flex", alignItems: "center", gap: 6 }}>
+                  <i className="ti ti-alert-triangle" aria-hidden="true"></i>
+                  No CGC sheet uploaded
+                </p>
+                <p style={{ fontSize: 13, color: "var(--text-secondary)", margin: "0 0 12px" }}>
+                  This project doesn't have a CGC sheet yet — Display Name view calculations won't be available for {queuedFilesPendingCgc ? "this data" : "this upload"} until one is added. Continue anyway?
+                </p>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="primary" onClick={handleProceedNoCgc}>Continue anyway</button>
                   <button onClick={handleCancelConfirm} style={{ background: "transparent" }}>Cancel</button>
                 </div>
               </div>

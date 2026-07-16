@@ -1,0 +1,11 @@
+{
+  "timestamp": "2026-07-16T18:41:03.206Z",
+  "projectRoot": "C:\\Users\\ketan\\OneDrive\\Desktop\\Webites and admin\\ai-accuracy-database\\ai-accuracy-database",
+  "structure": {
+    "hasPackageJson": true,
+    "hasTsConfig": true,
+    "hasClaudeConfig": true,
+    "hasClaudeFlow": true
+  },
+  "scannedAt": 1784227263208
+}
