@@ -50,11 +50,22 @@ async function fetchAllAnnotations(supabase: SupabaseClient, snapshotId: string)
   return rows;
 }
 
-async function insertBatched(supabase: SupabaseClient, table: string, rows: any[], batchSize = 500) {
-  for (let i = 0; i < rows.length; i += batchSize) {
-    const { error } = await supabase.from(table).insert(rows.slice(i, i + batchSize));
-    if (error) throw new Error(`Failed to save ${table}: ` + error.message);
+// Batches are independent, so fire a handful concurrently instead of one at a
+// time — mirrors the same change in lib/uploadProcessing.ts.
+async function insertBatched(supabase: SupabaseClient, table: string, rows: any[], batchSize = 2000, concurrency = 4) {
+  const batches: any[][] = [];
+  for (let i = 0; i < rows.length; i += batchSize) batches.push(rows.slice(i, i + batchSize));
+
+  let nextIndex = 0;
+  async function worker() {
+    while (true) {
+      const i = nextIndex++;
+      if (i >= batches.length) return;
+      const { error } = await supabase.from(table).insert(batches[i]);
+      if (error) throw new Error(`Failed to save ${table}: ` + error.message);
+    }
   }
+  await Promise.all(Array.from({ length: Math.min(concurrency, batches.length) }, worker));
 }
 
 export interface RecomputeResult {

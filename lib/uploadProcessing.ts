@@ -39,11 +39,24 @@ function buildAnnotationRow(r: Row, snapshotId: string) {
   };
 }
 
-async function insertBatched(supabase: SupabaseClient, table: string, rows: any[], batchSize = 500) {
-  for (let i = 0; i < rows.length; i += batchSize) {
-    const { error } = await supabase.from(table).insert(rows.slice(i, i + batchSize));
-    if (error) throw new Error(`Failed to save ${table}: ` + error.message);
+// Batches are independent (no shared row identity), so we fire a handful
+// concurrently instead of one at a time — for a large df_out export this is
+// the dominant cost of an upload, and serial round-trips from the browser
+// were the main reason uploads felt slow.
+async function insertBatched(supabase: SupabaseClient, table: string, rows: any[], batchSize = 2000, concurrency = 4) {
+  const batches: any[][] = [];
+  for (let i = 0; i < rows.length; i += batchSize) batches.push(rows.slice(i, i + batchSize));
+
+  let nextIndex = 0;
+  async function worker() {
+    while (true) {
+      const i = nextIndex++;
+      if (i >= batches.length) return;
+      const { error } = await supabase.from(table).insert(batches[i]);
+      if (error) throw new Error(`Failed to save ${table}: ` + error.message);
+    }
   }
+  await Promise.all(Array.from({ length: Math.min(concurrency, batches.length) }, worker));
 }
 
 export interface SaveSnapshotParams {
@@ -143,8 +156,12 @@ export async function saveSnapshotData(
 
   // Persist the minimal per-row data needed to (re)compute a Display Name
   // view later, whenever a CGC sheet is uploaded or changed for this project.
+  // Scoped to just the categories in *this* upload — a project can be built
+  // up by uploading one category's file at a time to the same date, and an
+  // upload for category B must not delete category A's previously-saved rows.
   onProgress?.("Saving row-level data for future recalculation…", 72);
-  await supabase.from("snapshot_annotations").delete().eq("snapshot_id", snapshotId);
+  const uploadedCategoryNames = categories.map((c) => c.category_name);
+  await supabase.from("snapshot_annotations").delete().eq("snapshot_id", snapshotId).in("category_name", uploadedCategoryNames);
   await insertBatched(supabase, "snapshot_annotations", rows.map((r) => buildAnnotationRow(r, snapshotId)));
 
   // If this project already has a CGC sheet uploaded, compute and save the
@@ -159,14 +176,15 @@ export async function saveSnapshotData(
     const { categories: displayCategories } = computeAllCategoriesDisplay(rows, classNameMap);
     const displayPairs = buildConfusionPairsDisplay(rows, classNameMap);
 
-    if (allSnapIds.length) {
-      for (const cat of displayCategories) {
+    for (const cat of displayCategories) {
+      if (allSnapIds.length) {
         await supabase.from("confusion_pairs").delete().in("snapshot_id", allSnapIds).eq("category_name", cat.category_name).eq("view_mode", "display");
       }
-    }
-    await supabase.from("category_metrics").delete().eq("snapshot_id", snapshotId).eq("view_mode", "display");
+      // Scoped to this category only — an unscoped delete here was wiping
+      // every other category's display-view metrics for this snapshot on
+      // every single-category upload (the Display Name view bug).
+      await supabase.from("category_metrics").delete().eq("snapshot_id", snapshotId).eq("category_name", cat.category_name).eq("view_mode", "display");
 
-    for (const cat of displayCategories) {
       await supabase.from("category_metrics").insert({
         snapshot_id: snapshotId,
         category_name: cat.category_name,
